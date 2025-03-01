@@ -1,0 +1,1 @@
+Adapted from Rasmus Andersson's [WASM-Util](https://github.com/rsms/wasm-util)
