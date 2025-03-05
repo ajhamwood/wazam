@@ -18,7 +18,7 @@ async function testWasm (mod, imports) {
 var testModules = (() => {
   const {
     uint8, uint32, float32, float64, varuint1, varuint7, varuint32, varint7, varint32, varint64,
-    any_func, func, empty_block, void_, external_kind, data, str, str_ascii, str_utf8, module,
+    any_func, func, void_, external_kind, data, str, str_ascii, str_utf8, module,
     custom_section, type_section, import_section, function_section, table_section, memory_section,
     global_section, export_section, start_section, element_section, code_section, data_section,
     function_import_entry, table_import_entry, memory_import_entry, global_import_entry, export_entry,
@@ -38,8 +38,8 @@ var testModules = (() => {
         varuint32(0)  // function index = 0, using type index 0
       ]),
       export_section([
-        // Export "factorial" as function at index 0
-        export_entry(str_ascii("factorial"), external_kind.function, varuint32(0))
+        // Export "fact" as function at index 0
+        export_entry(str_ascii("fact"), external_kind.function, varuint32(0))
       ]),
       code_section([
         // Body of function at index 0
@@ -101,15 +101,57 @@ var testModules = (() => {
           )
         ])
       ])
+    ]),
+    sat: module([
+      type_section([
+        func_type([ f32 ], i32)
+      ]),
+      function_section([
+        varuint32(0)
+      ]),
+      export_section([
+        export_entry(str_ascii("sat"), external_kind.function, varuint32(0))
+      ]),
+      code_section([
+        function_body([], [
+          i32.trunc_sat_f32_s(
+            get_local(f32, 0)
+          )
+        ])
+      ])
+    ]),
+    sext: module([
+      type_section([
+        func_type([ i32 ], i32)
+      ]),
+      function_section([
+        varuint32(0)
+      ]),
+      export_section([
+        export_entry(str_ascii("sext"), external_kind.function, varuint32(0))
+      ]),
+      code_section([
+        function_body([], [
+          i32.extend8_s(
+            get_local(i32, 0)
+          )
+        ])
+      ])
     ])
   }
 })();
 
 (async () => {
   let { instance } = await testWasm(testModules.fact);
-  console.log("Wasm factorial test", instance.exports.factorial(8));
+  console.log("Wasm factorial test:", instance.exports.fact(8));
   
-  const mem = new WebAssembly.Memory({ initial: 1, maximum: 1 });
+  let mem = new WebAssembly.Memory({ initial: 1, maximum: 1 });
   ({ instance } = await testWasm(testModules.mem, { js: { mem } }));
-  console.log("Wasm memory test", instance.exports.store(0x4, 0xFFFFFFFF), new Uint32Array(mem.buffer));
+  console.log("Wasm memory test:", instance.exports.store(0x4, 0xFFFFFFFF), new Uint32Array(mem.buffer));
+
+  ({ instance } = await testWasm(testModules.sat));
+  console.log("Wasm non-trapping num conversion test:", NaN, "->", instance.exports.sat(NaN));
+
+  ({ instance } = await testWasm(testModules.sext));
+  console.log("Wasm sign extension test:", instance.exports.sext(130));
 })()
