@@ -7,9 +7,9 @@ Adapted from Rasmus Andersson's [WASM-Util](https://github.com/rsms/wasm-util)
   - [x] (FF62) Sign extension operations
   - [x] (FF64) Non-trapping float-to-int conversions
   - [x] (FF78) BigInt-to-i64 integration
-  - [ ] (FF78) Bulk memory operations
+  - [x] (FF78) Bulk memory operations
   - [ ] (FF78) Multi-value
-  - [ ] (FF79) Reference types
+  - [x] (FF79) Reference types
   - [ ] (FF79) Threads and atomics
   - [ ] (FF89) Fixed width SIMD
   - [ ] (FF100) Legacy exception handling

@@ -44,21 +44,22 @@ const assert = (cond, ...msg) => cond || console.error("ASSERTION FAILURE", ...m
 
 const T = {
   // Atoms
-  uint8:         Symbol('u8'),
-  uint16:        Symbol('u16'),
-  uint32:        Symbol('u32'),
-  varuint1:      Symbol('vu1'),
-  varuint7:      Symbol('vu7'),
-  varuint32:     Symbol('vu32'),
-  varint7:       Symbol('vs7'),
-  varint32:      Symbol('vs32'),
-  varint64:      Symbol('vs64'),
-  float32:       Symbol('f32'), // non-standard
-  float64:       Symbol('f64'), // non-standard
-  prefix:        Symbol('prefix'), // non-standard
-  data:          Symbol('data'), // non-standard
-  type:          Symbol('type'), // non-standard, signifies a varint7 type constant
-  external_kind: Symbol('type'),
+  uint8:          Symbol('u8'),
+  uint16:         Symbol('u16'),
+  uint32:         Symbol('u32'),
+  varuint1:       Symbol('vu1'),
+  varuint7:       Symbol('vu7'),
+  varuint32:      Symbol('vu32'),
+  varint7:        Symbol('vs7'),
+  varint32:       Symbol('vs32'),
+  varint64:       Symbol('vs64'),
+  float32:        Symbol('f32'), // non-standard
+  float64:        Symbol('f64'), // non-standard
+  prefix:         Symbol('prefix'), // non-standard
+  data:           Symbol('data'), // non-standard
+  type:           Symbol('type'), // non-standard, signifies a varint7 type constant
+  external_kind:  Symbol('type'),
+  reference_kind: Symbol('type'),
 
   // Instructions
   instr:              Symbol('instr'), // non-standard
@@ -83,6 +84,7 @@ const T = {
   global_variable:  Symbol('global_variable'),
   init_expr:        Symbol('init_expr'),
   elem_segment:     Symbol('elem_segment'),
+  elem_expr:        Symbol('elem_expr'),
   data_segment:     Symbol('data_segment'),
   function_body:    Symbol('function_body'),
   str:              Symbol('str'), // non-standard
@@ -194,7 +196,7 @@ class instr_atom extends u8_atom {
 // instr_cell : N
 class instr_cell {
   // (TypeTag, uint8 | uint16, AnyResult, uint32) -> instr_cell
-  constructor (t, op, mbResult, z) { this.t = t; this.z = z; this.v = new Uint8Array(op); this.r = mbResult }
+  constructor (t, [op, prefix], mbResult, z) { this.t = t; this.z = z; this.p = prefix; this.v = op; this.r = mbResult }
   emit (e) { return e }
 }
 
@@ -205,7 +207,9 @@ class instr_pre1 extends instr_cell {
     super(T.instr_pre1, op, mbResult, op.length + pre.z);
     this.pre = pre
   }
-  emit (e) { return this.pre.emit(e).writeBytes(this.v) }
+  emit (e) { return this.p === undefined ?
+    this.pre.emit(e).writeU8(this.v) :
+    this.pre.emit(e).writeU8(this.p).writeU8(this.v) }
 }
 
 // instr_cell instr_imm1 => instr_imm1
@@ -215,7 +219,9 @@ class instr_imm1 extends instr_cell {
     super(T.instr_imm1, op, mbResult, op.length + imm.z);
     this.imm = imm
   }
-  emit (e) { return this.imm.emit(e.writeBytes(this.v)) }
+  emit (e) { return this.p === undefined ?
+    this.imm.emit(e.writeU8(this.v)) :
+    this.imm.emit(e.writeU8(this.p).writeU8(this.v)) }
 }
 
 // instr_cell instr_pre => instr_pre
@@ -225,7 +231,9 @@ class instr_pre extends instr_cell {
     super(T.instr_pre, op, mbResult, op.length + sumz(pre));
     this.pre = pre
   }
-  emit (e) { return writev(e, this.pre).writeBytes(this.v) }
+  emit (e) { return this.p === undefined ?
+    writev(e, this.pre).writeU8(this.v) :
+    writev(e, this.pre).writeU8(this.p).writeU8(this.v) }
 }
 
 // instr_cell instr_imm1_post => instr_imm1_post
@@ -235,7 +243,9 @@ class instr_imm1_post extends instr_cell {
     super(T.instr_imm1_post, op, mbResult, op.length + imm.z + sumz(post));
     this.imm = imm; this.post = post
   }
-  emit (e) { return writev(this.imm.emit(e.writeBytes(this.v)), this.post) }
+  emit (e) { return this.p === undefined ?
+    writev(this.imm.emit(e.writeU8(this.v)), this.post) :
+    writev(this.imm.emit(e.writeU8(this.p).writeU8(this.v)), this.post) }
 }
 
 // instr_cell instr_pre_imm => instr_pre_imm
@@ -245,7 +255,9 @@ class instr_pre_imm extends instr_cell {
     super(T.instr_pre_imm, op, mbResult, op.length + sumz(pre) + sumz(imm));
     this.pre = pre; this.imm = imm
   }
-  emit (e) { return writev(writev(e, this.pre).writeBytes(this.v), this.imm) }
+  emit (e) { return this.p === undefined ?
+    writev(writev(e, this.pre).writeU8(this.v), this.imm) :
+    writev(writev(e, this.pre).writeU8(this.p).writeU8(this.v), this.imm) }
 }
 
 // instr_pre_imm_post : instr_cell
@@ -255,7 +267,9 @@ class instr_pre_imm_post extends instr_cell {
     super(T.instr_pre_imm_post, op, mbResult, op.length + sumz(pre) + sumz(imm) + sumz(post));
     this.pre = pre; this.imm = imm; this.post = post
   }
-  emit (e) { return writev(writev(writev(e, this.pre).writeBytes(this.v), this.imm), this.post) }
+  emit (e) { return this.p === undefined ?
+    writev(writev(writev(e, this.pre).writeU8(this.v), this.imm), this.post) :
+    writev(writev(writev(e, this.pre).writeU8(this.p).writeU8(this.v), this.imm), this.post) }
 }
 
 // R => (number, number, number -> Maybe R) -> [R]
@@ -353,10 +367,19 @@ function varint64 (value) {
 
 
 // Language types
+function ref (heapType) {
+  return new instr_imm1([0x64], T.reference_kind, heapType)
+}
+function ref_null (heapType) {
+  return new instr_imm1([0x63], T.reference_kind, heapType)
+}
 const
-  AnyFunc = new type_atom(-0x10, 0x70),  // AnyFunc
   Func = new type_atom(-0x20, 0x60),  // Func
   Void = new type_atom(-0x40, 0x40),  // Void
+  Heap = {
+    Func: new type_atom(-0x10, 0x70),  // Func ref
+    Extern: new type_atom(-0x11, 0x6F) // Extern ref
+  },
 
   external_kind_function = new u8_atom(T.external_kind, 0),  // ExternalKind
   external_kind_table = new u8_atom(T.external_kind, 1),  // ExternalKind
@@ -377,6 +400,7 @@ const
   sect_id_element = varuint7(9),
   sect_id_code = varuint7(10),
   sect_id_data = varuint7(11),
+  sect_id_datacount = varuint7(12),
   sect_id = {
     custom: sect_id_custom,
     type: sect_id_type,
@@ -390,6 +414,7 @@ const
     element: sect_id_element,
     code: sect_id_code,
     data: sect_id_data,
+    datacount: sect_id_datacount
   };
 
 // (VarUint7, N, [N]) -> Cell N
@@ -408,7 +433,7 @@ const
   addrIsAligned = (natAl, al, offs, addr) => al <= natAl && ((addr + offs) % [1, 2, 4, 8][al]) == 0,
 
   // (OpCode, AnyResult, N) -> Op R
-  trunc_sat = (op, r, a) => new instr_pre1([0xfc, op], r, a);
+  trunc_sat = (op, r, a) => new instr_pre1([op, 0xfc], r, a);
 
 
 // type_atom i32ops => i32ops : I32ops
@@ -676,9 +701,9 @@ const
     varint32,
     varint64,
 
-    any_func: AnyFunc,
     func: Func,
     void: Void, void_: Void,
+    heap: Heap, ref, ref_null,
 
     external_kind: {
       function: external_kind_function,
@@ -729,6 +754,8 @@ const
     code_section: bodies => section(sect_id_code, varuint32(bodies.length), bodies),
     // [DataSegment] -> DataSection
     data_section: entries => section(sect_id_data, varuint32(entries.length), entries),
+    // VarUint32 -> DataCountSection
+    datacount_section: dataCount => section(sect_id_datacount, dataCount, []),
 
     // (Str, Str, VarUint32) -> ImportEntry
     function_import_entry: (module, field, typeIndex) =>
@@ -746,32 +773,49 @@ const
     // (Str, ExternalKind, VarUint32) -> ExportEntry
     export_entry: (field, kind, index) => new cell(T.export_entry, [ field, kind, index ]),
     
-    // (VarUint32, InitExpr, [VarUint32]) -> ElemSegment
-    elem_segment: (index, offset, funcIndex) =>
-      new cell(T.elem_segment, [ index, offset, varuint32(funcIndex.length), ...funcIndex ]),
-    // (VarUint32, InitExpr, Data) -> DataSegment
-    data_segment: (index, offset, data) =>
-      new cell(T.data_segment, [ index, offset, varuint32(data.z), data ]),
-    
+    // (InitExpr, [VarUint32] | [ElemExpr], Maybe RefType, Maybe VarUint32) -> ElemSegment
+    active_elem_segment: (offset, elemPayload, refType, tableIndex) => new cell(T.elem_segment, tableIndex ?
+      [ varuint32(2 + 4 * !!refType), tableIndex ?? varuint1_0, c.init_expr([offset]), refType ?? varuint1_0, varuint32(elemPayload.length), ...elemPayload ] :
+      [ varuint32(0 + 4 * !!refType), c.init_expr([offset]), varuint32(elemPayload.length), ...elemPayload ]),
+    // ([VarUint32] | [ElemExpr], Maybe RefType) -> ElemSegment
+    passive_elem_segment: (elemPayload, refType) => new cell(T.elem_segment,
+      [ varuint32(1 + 4 * !!refType), refType ?? varuint1_0, varuint32(elemPayload.length), ...elemPayload ]),
+    // ([VarUint32] | [ElemExpr], Maybe RefType) -> ElemSegmentbulk memory examples
+    declarative_elem_segment: (elemPayload, refType) => new cell(T.elem_segment,
+      [ varuint32(3 + 4 * !!refType), refType ?? varuint1_0, varuint32(elemPayload.length), ...elemPayload ]),
+
+    // Data -> DataSegment
+    passive_data_segment: data => new cell(T.data_segment, [ varuint32(1), data ]),
+    // (InitExpr, Data, Maybe VarUint32) -> DataSegment
+    active_data_segment: (offset, data, memid) => new cell(T.data_segment,
+      memid ? [ varuint32(2), memid, offset, data ] : [ varuint32(0), offset, data ]),
+
     // ([ValueType], Maybe ValueType) -> FuncType
     func_type: (paramTypes, returnType) => new cell(T.func_type, [ Func, varuint32(paramTypes.length),
       ...paramTypes, ...(returnType ? [ varuint1_1, returnType ] : [ varuint1_0 ]) ]),
     // (ElemType, ResizableLimits) -> TableType
     table_type: (type, limits) => {
-      assert(type.v == AnyFunc.v, "type.v", type.v, "!= AnyFunc.v", AnyFunc.v)  // WASM MVP limitation
+      assert(type.v == Heap.Extern.v || type.v == Heap.Func.v, "type.v", type.v, "!= Extern.v", Heap.Extern.v, "&& type.v !== Func.v", Heap.Func.v);
       return new cell(T.table_type, [ type, limits ]) },
     // (ValueType, Maybe boolean) -> GlobalType
     global_type: (contentType, mutable) => new cell(T.global_type, [
       contentType, mutable ? varuint1_1 : varuint1_0 ]),
     
     // Expressed in number of memory pages (1 page = 64KiB)
-    // (VarUint32, Maybe VarUint32) -> ResizableLimits
+    // (uint32, Maybe uint32) -> ResizableLimits
     resizable_limits: (initial, maximum) => new cell(T.resizable_limits, maximum ?
-      [ varuint1_1, initial, maximum ] : [ varuint1_0, initial ]),
+      [ varuint1_1, varuint32(initial), varuint32(maximum) ] : [ varuint1_0, varuint32(initial) ]),
     // (GlobalType, InitExpr) -> GlobalVariable
     global_variable: (type, init) => new cell(T.global_variable, [ type, init ]),
     // [N] -> InitExpr
     init_expr: expr => new cell(T.init_expr, [ ...expr, end ]),
+    // uint32 -> ElemExpr
+    elem_expr_func: funcIndex => new cell(T.elem_expr, [ c.func_ref(funcIndex), end ]),
+    // ElemType -> ElemExpr
+    elem_expr_null: type => {
+      assert(type.v == Heap.Extern.v || type.v == Heap.Func.v, "type.v", type.v, "!= Extern.v", Heap.Extern.v, "&& type.v !== Func.v", Heap.Func.v);
+      return new cell(T.elem_expr, [ c.null_ref(type), end ])
+    },
     // ([LocalEntry], [N]) -> FunctionBody
     function_body: (locals, code) => {
       const localCount = varuint32(locals.length);
@@ -838,18 +882,22 @@ const
     // Calling
     // Result R => (R, VarUint32, [AnyOp]) -> Op R
     call: (r, funcIndex, args) => new instr_pre_imm([0x10], r, args, [ funcIndex ]),
-    // Result R => (R, VarUint32, [AnyOp]) -> Op R
-    call_indirect: (r, funcIndex, args) => new instr_pre_imm([0x11], r, args, [ funcIndex, varuint1_0 ]),
+    // Result R => (R, [AnyOp], InitExpr, VarUint32, VarUint32) -> Op R
+    call_indirect: (r, args, offset, funcIndex, typeIndex) =>
+      new instr_pre_imm([0x11], r, [ ...args, offset ], [ typeIndex, funcIndex ]),
+
     // Drop discards the value of its operand
     // R should be the value "under" the operand on the stack
     // Eg with stack I32 (top) : F64 : F32 (bottom)  =drop=>  F64 (top) : F32 (bottom), then R = F64
     // AnyResult R => (R, Op Result) -> Op R
     drop: (r, n) => new instr_pre1([0x1a], r, n),
     // Select one of two values based on condition
-    // Result R => (Op I32, Op R, Op R) -> Op R
-    select: (cond, trueRes, falseRes) => {
-      assert(trueRes.r === falseRes.r);
-      return new instr_pre([0x1b], trueRes.r, [ trueRes, falseRes, cond ]) },
+    // Result R => (Op I32, Op R, Op R, Maybe [Type, Type]) -> Op R
+    select: (cond, trueRes, falseRes, [trueType, falseType]) => {
+      assert(trueRes.r === falseRes.r || (trueType && falseType));
+      return trueType && falseType ?
+        new instr_pre_imm([0x1c], _, [ trueRes, falseRes, cond ], [ varuint32(2), trueType, falseType ]) :
+        new instr_pre([0x1b], trueRes.r, [ trueRes, falseRes, cond ]) },
 
     // Variable access
     // Result R => (R, uint32) -> Op R
@@ -877,6 +925,45 @@ const
     align32: [ varUint32Cache[2], varUint32Cache[0] ],  // [ VarUint32, Int ]
     align64: [ varUint32Cache[3], varUint32Cache[0] ],  // [ VarUint32, Int ]
 
+    // Bulk memory operations
+    // (uint32, InitExpr, InitExpr, InitExpr) -> Void
+    init_memory: (seg, size, offset, dest) =>
+      new instr_pre_imm([0x08, 0xfc], Void, [ dest, offset, size ], [ varuint32(seg), varuint1_0 ]),
+    // uint32 -> Void
+    drop_data: seg => new instr_imm1([0x09, 0xfc], Void, varuint32(seg)),
+    // (InitExpr, InitExpr, InitExpr) -> Void
+    copy_memory: (size, offset, dest) =>
+      new instr_pre_imm([0x0a, 0xfc], Void, [ dest, offset, size ], [ varuint1_0, varuint1_0 ]),
+    // (InitExpr, Value, InitExpr) -> Void
+    fill_memory: (size, byteVal, dest) =>
+      new instr_pre_imm([0x0b, 0xfc], Void, [ dest, byteVal, size ], [ varuint1_0 ]),
+    // Result R => (InitExpr, uint32) -> Op R
+    get_table: (tableIndex, offset) =>
+      new instr_pre_imm([0x25], ref(Func), [ offset ], [ varuint32(tableIndex) ]),
+    // (Op Ref, InitExpr, uint32) -> Void
+    set_table: (tableIndex, value, offset) =>
+      new instr_pre_imm([0x26], Void, [ offset, value ], [ varuint32(tableIndex) ]),
+    // (InitExpr, InitExpr, InitExpr) -> Void
+    init_table: (seg, size, offset, dest) =>
+      new instr_pre_imm([0x0c, 0xfc], Void, [ dest, offset, size ], [ seg, varuint1_0 ]),
+    // uint32 -> Void
+    drop_elem: seg => new instr_imm1([0x0d, 0xfc], Void, varuint32(seg)),
+    // (InitExpr, InitExpr, InitExpr) -> Void
+    copy_table: (size, offset, dest) =>
+      new instr_pre_imm([0x0e, 0xfc], Void, [ dest, offset, size ], [ varuint1_0, varuint1_0 ]),
+
+    // Reference types
+    // HeapType -> RefType
+    null_ref: heapType => new instr_imm1([0xd0], ref_null(heapType), heapType),
+    // RefType -> Op I32
+    is_null_ref: reference => new instr_pre1([0xd1], c.i32, reference),
+    // uint32 -> RefType
+    func_ref: funcIndex => new instr_imm1([0xd2], ref(Func), varuint32(funcIndex)), // Is this correct?
+    // (RefType, RefType) -> Op I32
+    eq_ref: (ref1, ref2) => new instr_pre([0xd3], c.i32, [ ref1, ref2 ]),
+    // RefType -> RefType
+    as_non_null_ref: reference => new instr_pre1([0xd4], reference.t, reference),
+
     i32: new i32ops(-0x01, 0x7f),  // I32ops
     i64: new i64ops(-0x02, 0x7e),  // I64ops
     f32: new f32ops(-0x03, 0x7d),  // F32ops
@@ -889,6 +976,7 @@ const
     sections: m => m.v.slice(2),  // 0=magic, 1=version, 2...=[Section]
     // (Module, Either VarUint7 uint7) -> Section
     section: (m, id) => {
+      console.log("section", m, id)
       let ido = (typeof id !== "object") ? varuint7(id) : id;  // VarUint7
       for (let i = 2; i < m.v.length; ++i) {
         let section = m.v[i];
@@ -928,11 +1016,13 @@ const
     [ 0x11, "call_indirect" ],
     [ 0x1a, "drop" ],
     [ 0x1b, "select" ],
-    [ 0x20, "get_local" ],
-    [ 0x21, "set_local" ],
-    [ 0x22, "tee_local" ],
-    [ 0x23, "get_global" ],
-    [ 0x24, "set_global" ],
+    [ 0x20, "local.get" ],
+    [ 0x21, "local.set" ],
+    [ 0x22, "local.tee" ],
+    [ 0x23, "global.get" ],
+    [ 0x24, "global.set" ],
+    [ 0x25, "table.get" ],
+    [ 0x26, "table.set" ],
     [ 0x28, "i32.load" ],
     [ 0x29, "i64.load" ],
     [ 0x2a, "f32.load" ],
@@ -1090,15 +1180,29 @@ const
     [ 0xc2, "i64.extend8_s" ],
     [ 0xc3, "i64.extend16_s" ],
     [ 0xc4, "i64.extend32_s" ],
-    [ 0x00fc, "i32.trunc_sat_f32_s" ],
-    [ 0x01fc, "i32.trunc_sat_f32_u" ],
-    [ 0x02fc, "i32.trunc_sat_f64_s" ],
-    [ 0x03fc, "i32.trunc_sat_f64_u" ],
-    [ 0x04fc, "i64.trunc_sat_f32_s" ],
-    [ 0x05fc, "i64.trunc_sat_f32_u" ],
-    [ 0x06fc, "i64.trunc_sat_f64_s" ],
-    [ 0x07fc, "i64.trunc_sat_f64_u" ]
-  ]);
+    [ 0xd0, "ref.null" ],
+    [ 0xd1, "ref.is_null" ],
+    [ 0xd2, "ref.func" ],
+    [ 0xd3, "ref.eq" ],
+    [ 0xd4, "ref.as_non_null" ]
+  ]),
+  prefix_fc = new Map([
+    [ 0x00, "i32.trunc_sat_f32_s" ],
+    [ 0x01, "i32.trunc_sat_f32_u" ],
+    [ 0x02, "i32.trunc_sat_f64_s" ],
+    [ 0x03, "i32.trunc_sat_f64_u" ],
+    [ 0x04, "i64.trunc_sat_f32_s" ],
+    [ 0x05, "i64.trunc_sat_f32_u" ],
+    [ 0x06, "i64.trunc_sat_f64_s" ],
+    [ 0x07, "i64.trunc_sat_f64_u" ],
+    [ 0x08, "memory.init" ],
+    [ 0x09, "data.drop" ],
+    [ 0x0a, "memory.copy" ],
+    [ 0x0b, "memory.fill" ],
+    [ 0x0c, "table.init" ],
+    [ 0x0d, "elem.drop" ],
+    [ 0x0e, "table.copy" ]
+  ])
 
 
 // Linear bytecode textual representation
@@ -1125,7 +1229,7 @@ function fmtimm (n) {
       case -2:    return 'i64'
       case -3:    return 'f32'
       case -4:    return 'f64'
-      case -0x10: return 'anyfunc'
+      case -0x10: return 'extern'
       case -0x20: return 'func'
       case -0x40: return 'void'
       default: throw new Error('unexpected type ' + n.t.toString())
@@ -1133,11 +1237,11 @@ function fmtimm (n) {
     default: throw new Error('unexpected imm ' + n.t.toString())
   }
 }
-// Op -> uint8 | uint16
-function opToNum (op) {
-  switch (op.length) {
-    case 1: return op[0];
-    case 2: return new Uint16Array(op.buffer)[0]
+// Either uint8 (uint8, VarUint32) -> string
+function getOpcode (p, v) {
+  switch (p) {
+    case undefined: return opcodes.get(v);
+    case 0xfc: return prefix_fc.get(v)
   }
 }
 // [N] -> string
@@ -1149,25 +1253,25 @@ function visitOp (n, c, depth) {
   switch (n.t) {
     case t.instr:
       if (n.v == 0x0b /*end*/ || n.v == 0x05 /*else*/) depth--;
-      return c.writeln(depth, opcodes.get(opToNum(n.v)))
+      return c.writeln(depth, getOpcode(n.p, n.v))
     case t.instr_imm1:
-      return c.writeln(depth, opcodes.get(opToNum(n.v)) + " " + fmtimm(n.imm))
+      return c.writeln(depth, getOpcode(n.p, n.v) + " " + fmtimm(n.imm))
     case t.instr_pre:
       visitOps(n.pre, c, depth);
-      return c.writeln(depth, opcodes.get(opToNum(n.v)))
+      return c.writeln(depth, getOpcode(n.p, n.v))
     case t.instr_pre1:
       visitOp(n.pre, c, depth);
-      return c.writeln(depth, opcodes.get(opToNum(n.v)))
+      return c.writeln(depth, getOpcode(n.p, n.v))
     case t.instr_imm1_post:
-      c.writeln(depth, opcodes.get(opToNum(n.v)) + " " + fmtimm(n.imm));
-      return visitOps(n.post, c, depth + n.v.length)
+      c.writeln(depth, getOpcode(n.p, n.v) + " " + fmtimm(n.imm));
+      return visitOps(n.post, c, depth + 1)
     case t.instr_pre_imm:
       visitOps(n.pre, c, depth);
-      return c.writeln(depth, opcodes.get(opToNum(n.v)) + fmtimmv(n.imm))
+      return c.writeln(depth, getOpcode(n.p, n.v) + fmtimmv(n.imm))
     case t.instr_pre_imm_post:
       visitOps(n.pre, c, depth);
-      c.writeln(depth, opcodes.get(opToNum(n.v)) + fmtimmv(n.imm));
-      visitOps(n.post, c, depth + n.v.length); break;
+      c.writeln(depth, getOpcode(n.p, n.v) + fmtimmv(n.imm));
+      visitOps(n.post, c, depth + 1); break;
     default: console.error("Unexpected op " + n.t.toString(),
       n.v.reduce((s, b) => s + b.toString(16).padStart(2, "0"), "0x"))
   }
@@ -1178,4 +1282,4 @@ function printCode (instructions, writer) {
   visitOps(instructions, ctx, 0)
 }
 
-export { T as t, c, get, sect_id, Emitter, printCode };
+export { t, c, get, sect_id, Emitter, printCode };
