@@ -23,9 +23,9 @@ var testModules = (() => {
     global_section, export_section, start_section, element_section, code_section, data_section, datacount_section,
     function_import_entry, table_import_entry, memory_import_entry, global_import_entry, export_entry,
     active_elem_segment, passive_elem_segment, declarative_elem_segment, active_data_segment, passive_data_segment,
-    func_type, table_type, global_type, resizable_limits, global_variable, init_expr, elem_expr_func, elem_expr_null, function_body, local_entry,
+    comp_type, func_type, table_type, global_type, resizable_limits, global_variable, init_expr, elem_expr_func, elem_expr_null, function_body, local_entry,
     unreachable, nop, block, void_block, loop, void_loop, if_, void_if, end, br, br_if, br_table,
-    return_, return_void, call, call_indirect, drop, select, get_local, set_local, tee_local, get_global, set_global,
+    return_, return_void, return_multi, call, call_indirect, drop, select, get_local, set_local, tee_local, get_global, set_global,
     current_memory, grow_memory, init_memory, drop_data, copy_memory, fill_memory, init_table, drop_elem, copy_table,
     set_table, get_table, null_ref, is_null_ref, func_ref, eq_ref, as_non_null_ref,
     align8, align16, align32, align64, i32, i64, f32, f64
@@ -33,7 +33,7 @@ var testModules = (() => {
   return {
     fact: module([
       type_section([
-        func_type([ i32 ], i32)  // type index = 0
+        comp_type(func, [ i32 ], [ i32 ])  // type index = 0
       ]),
       function_section([
         varuint32(0)  // function index = 0, using type index 0
@@ -60,7 +60,7 @@ var testModules = (() => {
     ]),
     mem: module([
       type_section([
-        func_type([ i32, i32 ], i32)
+        comp_type(func, [ i32, i32 ], [ i32 ])
       ]),
       import_section([
         memory_import_entry(
@@ -105,7 +105,7 @@ var testModules = (() => {
     ]),
     sat: module([
       type_section([
-        func_type([ f32 ], i32)
+        comp_type(func, [ f32 ], [ i32 ])
       ]),
       function_section([
         varuint32(0)
@@ -123,7 +123,7 @@ var testModules = (() => {
     ]),
     sext: module([
       type_section([
-        func_type([ i32 ], i32)
+        comp_type(func, [ i32 ], [ i32 ])
       ]),
       function_section([
         varuint32(0)
@@ -141,7 +141,7 @@ var testModules = (() => {
     ]),
     bulk: module([
       type_section([
-        func_type([i32, i32, i32])
+        comp_type(func, [i32, i32, i32])
       ]),
       import_section([
         memory_import_entry(
@@ -178,9 +178,9 @@ var testModules = (() => {
     ]),
     bulk_table: module([
       type_section([
-        func_type([heap.Extern]),
-        func_type([i32, heap.Extern]),
-        func_type([i32]),
+        comp_type(func, [heap.Extern]),
+        comp_type(func, [i32, heap.Extern]),
+        comp_type(func, [i32]),
       ]),
       import_section([
         function_import_entry(
@@ -208,6 +208,28 @@ var testModules = (() => {
           call(void_, varuint32(0), [ get_table(0, get_local(i32, 0)) ])
         ]),
       ])
+    ]),
+    multi_val: module([
+      type_section([
+        comp_type(func, [], [i32, i32])
+      ]),
+      function_section([
+        varuint32(0)
+      ]),
+      export_section([
+        export_entry(str_ascii("multi_block"), external_kind.function, varuint32(0))
+      ]),
+      code_section([
+        function_body([], [
+          block(
+            varuint32(0),
+            [
+              i32.const(2),
+              i32.const(3)
+            ]
+          )
+        ])
+      ])
     ])
   }
 })();
@@ -232,5 +254,8 @@ var testModules = (() => {
   ({ instance } = await testWasm(testModules.bulk_table, { js: { run (fn) { fn?.() } } }));
   console.log("Wasm bulk table ops test:",
     instance.exports.set_externref(0, function () { console.log('yo') }),
-    instance.exports.run_from_table(0))
+    instance.exports.run_from_table(0));
+  
+  ({ instance } = await testWasm(testModules.multi_val));
+  console.log("Wasm multi value test:", instance.exports.multi_block())
 })()
