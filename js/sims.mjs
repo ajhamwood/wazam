@@ -1,6 +1,35 @@
 import { c, get, sect_id, Emitter, printCode } from "./wasm.mjs";
 
-async function testWasm (mod, imports) {
+class Parallel {
+  #workers = new Map(); #freeWorkers; #fp
+  constructor (fp, count) {
+    this.#fp = fp;
+    this.#freeWorkers = Array(count).fill(0).map((_, i) => i)
+  }
+  async runOverAll (fn) {
+    while (this.#freeWorkers.length) await this.allocateOne(fn);
+  }
+  async allocateOne (fn) {
+    const wid = this.#freeWorkers.shift();
+    if (!~wid) return;
+    this.#workers.set(wid, new Worker(this.#fp));
+    return await fn(this.#workers.get(wid), wid)
+  }
+  async closeAll () { for (const wid of this.#workers.keys()) this.deallocate(wid) }
+  async deallocate (wid) {
+    this.#workers.get(wid).terminate();
+    this.#freeWorkers.push(wid)
+  }
+}
+
+navigator.serviceWorker?.register(import.meta.resolve("../coop-coep.js"))
+  .then(reg => {
+    console.log("COOP/COEP Service Worker is registered for:", reg.scope);
+    if (reg.active && !navigator.serviceWorker.controller) window.location.reload()
+  })
+  .catch(err => console.log("COOP/COEP Service Worker failed to register with error:", err));
+
+function testWasm (mod, imports) {
   const codeSection = get.section(mod, sect_id.code);
   for (let funcBody of get.function_bodies(codeSection)) {
     let log = "";
@@ -10,9 +39,7 @@ async function testWasm (mod, imports) {
   const emitbuf = new Emitter(new ArrayBuffer(mod.z));
   mod.emit(emitbuf);
   console.log("The buffer:\n", Array.from(new Uint8Array(emitbuf.buffer)).map((byte, i) => byte.toString(16).padStart(2, "0") + ((i + 1) % 8 ? "" : "\n")).join(" "));
-  const res = await WebAssembly.instantiate(emitbuf.buffer, imports);
-  console.log(res);
-  return res
+  return WebAssembly.instantiate(emitbuf.buffer, imports)
 }
 
 var testModules = (() => {
@@ -28,6 +55,7 @@ var testModules = (() => {
     return_, return_void, return_multi, call, call_indirect, drop, select, get_local, set_local, tee_local, get_global, set_global,
     current_memory, grow_memory, init_memory, drop_data, copy_memory, fill_memory, init_table, drop_elem, copy_table,
     set_table, get_table, null_ref, is_null_ref, func_ref, eq_ref, as_non_null_ref,
+    atomic_notify, atomic_wait32, atomic_wait64, atomic_fence,
     align8, align16, align32, align64, i32, i64, f32, f64
   } = c;
   return {
@@ -141,7 +169,7 @@ var testModules = (() => {
     ]),
     bulk: module([
       type_section([
-        comp_type(func, [i32, i32, i32])
+        comp_type(func, [ i32, i32, i32 ])
       ]),
       import_section([
         memory_import_entry(
@@ -178,9 +206,9 @@ var testModules = (() => {
     ]),
     bulk_table: module([
       type_section([
-        comp_type(func, [heap.Extern]),
-        comp_type(func, [i32, heap.Extern]),
-        comp_type(func, [i32]),
+        comp_type(func, [ heap.Extern ]),
+        comp_type(func, [ i32, heap.Extern ]),
+        comp_type(func, [ i32 ]),
       ]),
       import_section([
         function_import_entry(
@@ -211,7 +239,7 @@ var testModules = (() => {
     ]),
     multi_val: module([
       type_section([
-        comp_type(func, [], [i32, i32])
+        comp_type(func, [], [ i32, i32 ])
       ]),
       function_section([
         varuint32(0)
@@ -230,11 +258,58 @@ var testModules = (() => {
           )
         ])
       ])
+    ]),
+    atomics: module([
+      type_section([
+        comp_type(func, [ i32 ], []),
+        comp_type(func, [], [ i32 ])
+      ]),
+      import_section([
+        memory_import_entry(
+          str_utf8("js"),
+          str_utf8("mem"),
+          resizable_limits(1, 1, true)
+        )
+      ]),
+      function_section([
+        varuint32(0),
+        varuint32(1)
+      ]),
+      export_section([
+        export_entry(str_ascii("notify_all"), external_kind.function, varuint32(0)),
+        export_entry(str_ascii("run_atomic"), external_kind.function, varuint32(1))
+      ]),
+      code_section([
+        function_body([], [
+          i32.atomic_store(align32, i32.const(0), get_local(i32, 0)),
+          drop(void_,
+            atomic_notify(align32, i32.const(4), get_local(i32, 0))
+          )
+        ]),
+        function_body([], [
+          if_(varuint32(1),
+            i32.eq(
+              atomic_wait32(align32, i32.const(4), i32.const(0), i64.const(50_000_000)),
+              i32.const(2)
+            ),
+            [ i32.const(-1) ],
+            [
+              drop(void_,
+                i32.atomic_add(align32, i32.const(8), i32.const(1))
+              ),
+              i32.eq(
+                i32.atomic_load(align32, i32.const(8)),
+                i32.atomic_load(align32, i32.const(0))
+              )
+            ]
+          )
+        ])
+      ])
     ])
   }
 })();
 (async () => {
-  let { instance } = await testWasm(testModules.fact);
+  let { instance, module } = await testWasm(testModules.fact);
   console.log("Wasm factorial test:", instance.exports.fact(8));
   
   let mem = new WebAssembly.Memory({ initial: 1, maximum: 1 });
@@ -257,5 +332,28 @@ var testModules = (() => {
     instance.exports.run_from_table(0));
   
   ({ instance } = await testWasm(testModules.multi_val));
-  console.log("Wasm multi value test:", instance.exports.multi_block())
+  console.log("Wasm multi value test:", instance.exports.multi_block());
+
+
+  mem = new WebAssembly.Memory({ initial: 1, maximum: 1, shared: true });
+  ({ instance, module } = await testWasm(testModules.atomics, { js: { mem } }));
+  const
+    { hardwareConcurrency: count } = self.navigator,
+    threads = count - 1, p = new Parallel("js/atomics-test.js", threads),
+    view = new Int32Array(mem.buffer),
+    rs = new Map(), ps = new Map(Array(threads).fill(0).map((_, i) => [ i, new Promise(r => rs.set(i, r)) ]));
+  let r, pr = new Promise(res => r = res);
+  await p.runOverAll((w, wid) => {
+    w.onmessage = ({ data }) => {
+      const { state, result } = data;
+      if (state === "before") rs.get(wid)();
+      if (result) r(~result ? "done" : "timeout")
+    };
+    w.postMessage({ module, mem, wid, timeOrigin: performance.timeOrigin })
+  });
+  await Promise.all(ps.values());
+  console.log("before", performance.now());
+  instance.exports.notify_all(threads);
+  console.log("Wasm threads and atomics test:", await pr, view.slice(0, 3));
+  p.closeAll()
 })()
