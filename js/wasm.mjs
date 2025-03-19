@@ -1093,7 +1093,6 @@ const
     sections: m => m.v.slice(2),  // 0=magic, 1=version, 2...=[Section]
     // (Module, Either VarUint7 uint7) -> Section
     section: (m, id) => {
-      console.log("section", m, id)
       let ido = (typeof id !== "object") ? varuint7(id) : id;  // VarUint7
       for (let i = 2; i < m.v.length; ++i) {
         let section = m.v[i];

@@ -7,13 +7,108 @@
   <meta name='keywords' content=''>
   <meta name='description' content=''>
   <link rel='icon' type='image/x-icon' href='data:image/x-icon;base64,'>
-  <!-- <link rel="stylesheet" href="css/main.css"> -->
-   <style>
-body { background-color: black }
-   </style>
+  <link rel="stylesheet" href="css/main.css">
 </head>
 <body>
-  <script src="js/sims.mjs" type="module"></script>
+  <header>
+    <h1>Building WebAssembly directly in the browser</h1>
+  </header>
+  <main>
+    <nav>
+      <button id="first">⏫</button>
+      <button id="prev">⏶</button>
+      <button id="next">⏷</button>
+      <button id="last">⏬</button>
+    </nav>
+    <wasm-sim id="fact">
+      <h1 slot="title">WebAssembly 1.0 MVP</h1>
+      <p>Testin'</p>
+    </wasm-sim>
+    <wasm-sim id="mem">
+      <h1 slot="title">Memory alignment</h1>
+      <p>Yup</p>
+    </wasm-sim>
+    <wasm-sim id="sat">
+      <h1 slot="title">Non-trapping float-to-int conversions</h1>
+      <p>
+        <a href="https://github.com/WebAssembly/nontrapping-float-to-int-conversions/blob/main/proposals/nontrapping-float-to-int-conversion/Overview.md">Proposal</a>
+      </p>
+    </wasm-sim>
+    <wasm-sim id="sext">
+      <h1 slot="title">Sign extension operations</h1>
+      <p>
+        <a href="https://github.com/WebAssembly/sign-extension-ops/blob/master/proposals/sign-extension-ops/Overview.md">Proposal</a>
+      </p>
+    </wasm-sim>
+    <wasm-sim id="bulk">
+      <h1 slot="title">Bulk memory operations</h1>
+      <p>
+        <a href="https://github.com/WebAssembly/bulk-memory-operations/blob/master/proposals/bulk-memory-operations/Overview.md">Proposal</a>
+      </p>
+    </wasm-sim>
+    <wasm-sim id="bulk_table">
+      <h1 slot="title">Reference types</h1>
+      <p>
+        <a href="https://github.com/WebAssembly/reference-types/blob/master/proposals/reference-types/Overview.md">Proposal</a>
+      </p>
+    </wasm-sim>
+    <wasm-sim id="multi_val">
+      <h1 slot="title">Multi-values</h1>
+      <p>
+        <a href="https://github.com/WebAssembly/multi-value/blob/master/proposals/multi-value/Overview.md">Proposal</a>
+      </p>
+    </wasm-sim>
+    <wasm-sim id="atomics">
+      <h1 slot="title">Threads</h1>
+      <p>
+        <a href="https://github.com/WebAssembly/threads/blob/main/proposals/threads/Overview.md">Proposal</a>
+      </p>
+    </wasm-sim>
+  </main>
+  <template id="wasm-sim">
+    <style>
+div { color: #ddd }
+article {
+  display: grid;
+  height: 100dvh;
+  grid-template-columns: repeat(2, 1fr);
+  grid-template-rows: min-content 10dvh auto max(20dvh, 4em) max(5dvh, 2em) 10dvh }
+  .article-title, .article-copy, .console, .controls { grid-column: span 2 }
+  .text-repr, .buffer-repr, .console {
+    margin: 1em;
+    background-color: #fff3;
+    font-family: mono;
+    padding: .3em;
+    overflow-x: scroll }
+  .text-repr {
+    white-space: pre-wrap }
+  .buffer-repr {
+    margin-left: 0;
+    font-size: min(1em, 3.2dvw) }
+  .console { margin: 0 1em 1em }
+  .controls {
+    display: flex;
+    flex-direction: row;
+    align-items: center }
+    .controls > * { margin-left: 1em }
+    </style>
+    <article>
+      <div class="article-title">
+        <slot name="title"></slot>
+      </div>
+      <div class="article-copy">
+        <slot></slot>
+      </div>
+      <div class="text-repr"></div>
+      <div class="buffer-repr"></div>
+      <div class="console"></div>
+      <div class="controls">
+        <button class="run-wasm">Run ⏵</button>
+        <button class="reset-wasm">Reset ⏮</button>
+      </div>
+    </article>
+  </template>
+  <script src="js/main.mjs" type="module"></script>
   <noscript>Only viewable with JavaScript enabled.</noscript>
 </body>
 </html>

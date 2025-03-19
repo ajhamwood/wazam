@@ -1,4 +1,4 @@
-Adapted from Rasmus Andersson's [WASM-Util](https://github.com/rsms/wasm-util)
+Adapted from Rasmus Andersson's [WASM-Util](https://github.com/rsms/wasm-util), following the list of WebAssembly [feature extensions](https://webassembly.org/features/)
 
 <details>
   <summary>Development plan</summary>

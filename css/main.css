@@ -1,0 +1,33 @@
+html, body {
+  margin: 0;
+  padding: 0 }
+body {
+  background-color: black;
+  color: #ddd }
+header {
+  margin: 0;
+  height: 50dvh;
+  background-color: #fff3 }
+  header > h1 {
+    margin: 0;
+    width: fit-content;
+    max-width: 80dvw;
+    position: relative;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%) }
+main {
+  display: flex;
+  flex-direction: column;
+  align-items: center }
+nav {
+  position: fixed;
+  top: 1em;
+  right: 1em;
+  display: grid;
+  justify-items: center;
+  grid-gap: .3em }
+wasm-sim {
+  display: block;
+  height: 100dvh;
+  width: clamp(60dvw, 50em, 90dvw) }
