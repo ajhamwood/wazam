@@ -64,33 +64,42 @@
         <a href="https://github.com/WebAssembly/threads/blob/main/proposals/threads/Overview.md">Proposal</a>
       </p>
     </wasm-sim>
+    <wasm-sim id="simd">
+      <h1 slot="title">SIMD</h1>
+      <p>
+        <a href="https://github.com/WebAssembly/simd/blob/main/proposals/simd/SIMD.md">Proposal</a>. Many of the instructions listed in the core spec seem to not be implemented yet in 2025.
+      </p>
+    </wasm-sim>
   </main>
   <template id="wasm-sim">
     <style>
 div { color: #ddd }
 article {
+  container-type: size;
   display: grid;
   height: 100dvh;
   grid-template-columns: repeat(2, 1fr);
   grid-template-rows: min-content 10dvh auto max(20dvh, 4em) max(5dvh, 2em) 10dvh }
   .article-title, .article-copy, .console, .controls { grid-column: span 2 }
   .text-repr, .buffer-repr, .console {
-    margin: 1em;
+    margin: 1rem;
     background-color: #fff3;
-    font-family: mono;
-    padding: .3em;
-    overflow-x: scroll }
+    font-family: monospace;
+    padding: .3rem;
+    overflow: scroll }
   .text-repr {
-    white-space: pre-wrap }
+    white-space: pre }
   .buffer-repr {
     margin-left: 0;
-    font-size: min(1em, 3.2dvw) }
-  .console { margin: 0 1em 1em }
+    font-size: min(1em, calc(1.66 / 23 * (50cqw - 1.6rem - .5px))) }
+  .console {
+    margin: 0 1rem 1rem;
+    white-space: pre-wrap }
   .controls {
     display: flex;
     flex-direction: row;
     align-items: center }
-    .controls > * { margin-left: 1em }
+    .controls > * { margin-left: 1rem }
     </style>
     <article>
       <div class="article-title">

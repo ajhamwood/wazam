@@ -19,6 +19,11 @@ class Emitter {
     this.length += 4;
     return this
   }
+  writeU64 (v) { // BigInt
+    this.view.setBigUint64(this.length, v, true);
+    this.length += 8;
+    return this
+  }
   writeF32 (v) {
     this.view.setFloat32(this.length, v, true);
     this.length += 4;
@@ -55,6 +60,7 @@ const T = {
   varint64:       Symbol('vs64'),
   float32:        Symbol('f32'), // non-standard
   float64:        Symbol('f64'), // non-standard
+  vec128:         Symbol('v128'),
   prefix:         Symbol('prefix'), // non-standard
   data:           Symbol('data'), // non-standard
   type:           Symbol('type'), // non-standard, signifies a varint7 type constant
@@ -140,11 +146,25 @@ class f32_atom extends val_atom {
   emit (e) { return e.writeF32(this.v) }
 }
 
+// (val_atom uint64) u64_atom => u64_atom
+class u64_atom extends val_atom {
+  // biguint64 -> u64_atom
+  constructor (v) { super(T.biguint64, 8, v) }
+  emit (e) { return e.writeU64(this.v) }
+}
+
 // (val_atom float64) f64_atom => f64_atom
 class f64_atom extends val_atom {
   // number -> f64_atom
   constructor (v) { super(T.float64, 8, v) }
   emit (e) { return e.writeF64(this.v) }
+}
+
+// ([val_atom] vec128) v128_atom => v128_atom
+class v128_atom extends val_atom {
+  // number -> v128_atom
+  constructor (v) { super(T.vec128, 16, v) }
+  emit (e) { return e.writeBytes(this.v) }
 }
 
 // T : number, (val_atom T) (u8_atom T) => u8_atom T
@@ -295,6 +315,7 @@ const
   varuint1_1 = new u8_atom(T.varuint1, 1);  // Atom uint1
 function uint8 (v) { return uint8Cache[v] || new u8_atom(T.uint8, v) }  // uint8 -> Uint8
 function uint32 (v) { return new u32_atom(v) }  // uint32 -> Uint32
+function biguint64 (v) { return new u64_atom(v) }  // biguint64 -> BigUint64
 function float32 (v) { return new f32_atom(v) }  // float32 -> Float32
 function float64 (v) { return new f64_atom(v) }  // float64 -> Float64
 
@@ -365,6 +386,37 @@ function varint64 (value) {
     "value", value, "< -0x8000_0000_0000_0000n || value > 0x7fff_ffff_ffff_ffffn");
   return new bytesval_atom(T.varint64, value, encVarIntNBig(value))
 }
+// Vector packing
+function vari8x16 (value) {
+  assert(value.length === 16 && value.BYTES_PER_ELEMENT === 1,
+    "length", value.length, "!== 16 || bytes_per_element", value.BYTES_PER_ELEMENT, "!== 1");
+  return new v128_atom(value)
+}
+function vari16x8 (value) {
+  assert(value.length === 8 && value.BYTES_PER_ELEMENT === 2,
+    "length", value.length, "!== 8 || bytes_per_element", value.BYTES_PER_ELEMENT, "!== 2");
+  return new v128_atom(new Uint8Array(value.buffer))
+}
+function vari32x4 (value) {
+  assert(value.length === 4 && value.BYTES_PER_ELEMENT === 4,
+    "length", value.length, "!== 4 || bytes_per_element", value.BYTES_PER_ELEMENT, "!== 4");
+  return new v128_atom(new Uint8Array(value.buffer))
+}
+function vari64x2 (value) {
+  assert(value.length === 2 && value.BYTES_PER_ELEMENT === 8,
+    "length", value.length, "!== 2 || bytes_per_element", value.BYTES_PER_ELEMENT, "!== 8");
+  return new v128_atom(new Uint8Array(value.buffer))
+}
+function varf32x4 (value) {
+  assert(value.length === 4 && value.BYTES_PER_ELEMENT === 4,
+    "length", value.length, "!== 4 || bytes_per_element", value.BYTES_PER_ELEMENT, "!== 4");
+  return new v128_atom(new Uint8Array(value.buffer))
+}
+function varf64x2 (value) {
+  assert(value.length === 2 && value.BYTES_PER_ELEMENT === 8,
+    "length", value.length, "!== 2 || bytes_per_element", value.BYTES_PER_ELEMENT, "!== 8");
+  return new v128_atom(new Uint8Array(value.buffer))
+}
 
 
 // Language types
@@ -428,20 +480,22 @@ function section (id, imm, payload) {
 
 const
   // R : Result => (OpCode, R, MemImm, Op Int) -> Op R
-  memload = (op, r, mi, addr) => new instr_pre_imm([op], r, [addr], mi),
-  memload_atomic = (op, r, mi, addr) => new instr_pre_imm([op, 0xfe], r, [addr], mi),
+  memload = (op, r, mi, addr) => new instr_pre_imm(op, r, [addr], mi),
+  memload_lane = (op, r, [a, o], lane, addr) => new instr_pre_imm([op, 0xfd], r, [addr], [a, o, lane]),
   // (OpCode, MemImm, Op Int, Op Result) -> Op Void
-  memstore = (op, mi, addr, v) => new instr_pre_imm([op], Void, [addr, v], mi),
-  memstore_atomic = (op, mi, addr, v) => new instr_pre_imm([op, 0xfe], Void, [addr, v], mi),
+  memstore = (op, mi, addr, v) => new instr_pre_imm(op, Void, [addr, v], mi),
+  memstore_lane = (op, [a, o], lane, addr, v) => new instr_pre_imm([op, 0xfd], r, [addr, v], [a, o, lane]),
 
   // R : Result => (OpCode, R, Op R) -> Op R
-  unop = (op, r, v) => new instr_pre1([op], r, v),
+  unop = (op, r, v) => new instr_pre1(op, r, v),
   // R : Result => (OpCode, R, Op R, Op R) -> Op R
-  binop = (op, r, a, b) => new instr_pre([op], r, [a, b]),
+  binop = (op, r, a, b) => new instr_pre(op, r, [a, b]),
+  // R : Result => (OpCode, R, Op R, Op R, Op R) -> Op R
+  ternop = (op, r, a, b, c) => new instr_pre(op, r, [a, b, c]),
   // R : Result => (OpCode, R, Op R) -> Op I32
-  testop = (op, r, v) => new instr_pre1([op], r, v),
+  testop = (op, v) => new instr_pre1(op, c.i32, v),
   // R : Result => (OpCode, R, Op R, Op R) -> Op I32
-  relop = (op, r, a, b) => new instr_pre([op], r, [a, b]),
+  relop = (op, a, b) => new instr_pre(op, c.i32, [a, b]),
   // Return value is equivalent to a load op
   // R : Result => (OpCode, R, MemImm, Op Int, Op R) -> Op R
   rmw_atomic = (op, r, mi, addr, v) => new instr_pre_imm([op, 0xfe], r, [addr, v], mi),
@@ -462,48 +516,48 @@ class i32ops extends type_atom {
   const (v) { return this.constv(varint32(v)) }                                   // int32 -> Op I32
 
   // Memory
-  load (mi, addr) { return memload(0x28, this, mi, addr) }                        // (MemImm, Op Int) -> Op I32
-  load8_s (mi, addr) { return memload(0x2c, this, mi, addr) }                     // (MemImm, Op Int) -> Op I32
-  load8_u (mi, addr) { return memload(0x2d, this, mi, addr) }                     // (MemImm, Op Int) -> Op I32
-  load16_s (mi, addr) { return memload(0x2e, this, mi, addr) }                    // (MemImm, Op Int) -> Op I32
-  load16_u (mi, addr) { return memload(0x2f, this, mi, addr) }                    // (MemImm, Op Int) -> Op I32
-  store (mi, addr, v) { return memstore(0x36, mi, addr, v) }                      // (MemImm, Op Int, Op I32) -> Op Void
-  store8 (mi, addr, v) { return memstore(0x3a, mi, addr, v) }                     // (MemImm, Op Int, Op I32) -> Op Void
-  store16 (mi, addr, v) { return memstore(0x3b, mi, addr, v) }                    // (MemImm, Op Int, Op I32) -> Op Void
+  load (mi, addr) { return memload([0x28], this, mi, addr) }                      // (MemImm, Op Int) -> Op I32
+  load8_s (mi, addr) { return memload([0x2c], this, mi, addr) }                   // (MemImm, Op Int) -> Op I32
+  load8_u (mi, addr) { return memload([0x2d], this, mi, addr) }                   // (MemImm, Op Int) -> Op I32
+  load16_s (mi, addr) { return memload([0x2e], this, mi, addr) }                  // (MemImm, Op Int) -> Op I32
+  load16_u (mi, addr) { return memload([0x2f], this, mi, addr) }                  // (MemImm, Op Int) -> Op I32
+  store (mi, addr, v) { return memstore([0x36], mi, addr, v) }                    // (MemImm, Op Int, Op I32) -> Op Void
+  store8 (mi, addr, v) { return memstore([0x3a], mi, addr, v) }                   // (MemImm, Op Int, Op I32) -> Op Void
+  store16 (mi, addr, v) { return memstore([0x3b], mi, addr, v) }                  // (MemImm, Op Int, Op I32) -> Op Void
   addrIsAligned (mi, addr) { return addrIsAligned(2, mi[0].v, mi[1].v, addr) }    // (MemImm, number) -> boolean
 
   // Comparison
-  eqz (a) { return testop(0x45, this, a) }                                        // Op I32 -> Op I32
-  eq (a, b) { return relop(0x46, this, a, b) }                                    // (Op I32, Op I32) -> Op I32
-  ne (a, b) { return relop(0x47, this, a, b) }                                    // (Op I32, Op I32) -> Op I32
-  lt_s (a, b) { return relop(0x48, this, a, b) }                                  // (Op I32, Op I32) -> Op I32
-  lt_u (a, b) { return relop(0x49, this, a, b) }                                  // (Op I32, Op I32) -> Op I32
-  gt_s (a, b) { return relop(0x4a, this, a, b) }                                  // (Op I32, Op I32) -> Op I32
-  gt_u (a, b) { return relop(0x4b, this, a, b) }                                  // (Op I32, Op I32) -> Op I32
-  le_s (a, b) { return relop(0x4c, this, a, b) }                                  // (Op I32, Op I32) -> Op I32
-  le_u (a, b) { return relop(0x4d, this, a, b) }                                  // (Op I32, Op I32) -> Op I32
-  ge_s (a, b) { return relop(0x4e, this, a, b) }                                  // (Op I32, Op I32) -> Op I32
-  ge_u (a, b) { return relop(0x4f, this, a, b) }                                  // (Op I32, Op I32) -> Op I32
+  eqz (a) { return testop([0x45], a) }                                            // Op I32 -> Op I32
+  eq (a, b) { return relop([0x46], a, b) }                                        // (Op I32, Op I32) -> Op I32
+  ne (a, b) { return relop([0x47], a, b) }                                        // (Op I32, Op I32) -> Op I32
+  lt_s (a, b) { return relop([0x48], a, b) }                                // (Op I32, Op I32) -> Op I32
+  lt_u (a, b) { return relop([0x49], a, b) }                                // (Op I32, Op I32) -> Op I32
+  gt_s (a, b) { return relop([0x4a], a, b) }                                // (Op I32, Op I32) -> Op I32
+  gt_u (a, b) { return relop([0x4b], a, b) }                                // (Op I32, Op I32) -> Op I32
+  le_s (a, b) { return relop([0x4c], a, b) }                                // (Op I32, Op I32) -> Op I32
+  le_u (a, b) { return relop([0x4d], a, b) }                                // (Op I32, Op I32) -> Op I32
+  ge_s (a, b) { return relop([0x4e], a, b) }                                // (Op I32, Op I32) -> Op I32
+  ge_u (a, b) { return relop([0x4f], a, b) }                                // (Op I32, Op I32) -> Op I32
 
   // Numeric
-  clz (a) { return unop(0x67, this, a) }                                          // Op I32 -> Op I32
-  ctz (a) { return unop(0x68, this, a) }                                          // Op I32 -> Op I32
-  popcnt (a) { return unop(0x69, this, a) }                                       // Op I32 -> Op I32
-  add (a, b) { return binop(0x6a, this, a, b) }                                   // (Op I32, Op I32) -> Op I32
-  sub (a, b) { return binop(0x6b, this, a, b) }                                   // (Op I32, Op I32) -> Op I32
-  mul (a, b) { return binop(0x6c, this, a, b) }                                   // (Op I32, Op I32) -> Op I32
-  div_s (a, b) { return binop(0x6d, this, a, b) }                                 // (Op I32, Op I32) -> Op I32
-  div_u (a, b) { return binop(0x6e, this, a, b) }                                 // (Op I32, Op I32) -> Op I32
-  rem_s (a, b) { return binop(0x6f, this, a, b) }                                 // (Op I32, Op I32) -> Op I32
-  rem_u (a, b) { return binop(0x70, this, a, b) }                                 // (Op I32, Op I32) -> Op I32
-  and (a, b) { return binop(0x71, this, a, b) }                                   // (Op I32, Op I32) -> Op I32
-  or (a, b) { return binop(0x72, this, a, b) }                                    // (Op I32, Op I32) -> Op I32
-  xor (a, b) { return binop(0x73, this, a, b) }                                   // (Op I32, Op I32) -> Op I32
-  shl (a, b) { return binop(0x74, this, a, b) }                                   // (Op I32, Op I32) -> Op I32
-  shr_s (a, b) { return binop(0x75, this, a, b) }                                 // (Op I32, Op I32) -> Op I32
-  shr_u (a, b) { return binop(0x76, this, a, b) }                                 // (Op I32, Op I32) -> Op I32
-  rotl (a, b) { return binop(0x77, this, a, b) }                                  // (Op I32, Op I32) -> Op I32
-  rotr (a, b) { return binop(0x78, this, a, b) }                                  // (Op I32, Op I32) -> Op I32
+  clz (a) { return unop([0x67], this, a) }                                        // Op I32 -> Op I32
+  ctz (a) { return unop([0x68], this, a) }                                        // Op I32 -> Op I32
+  popcnt (a) { return unop([0x69], this, a) }                                     // Op I32 -> Op I32
+  add (a, b) { return binop([0x6a], this, a, b) }                                 // (Op I32, Op I32) -> Op I32
+  sub (a, b) { return binop([0x6b], this, a, b) }                                 // (Op I32, Op I32) -> Op I32
+  mul (a, b) { return binop([0x6c], this, a, b) }                                 // (Op I32, Op I32) -> Op I32
+  div_s (a, b) { return binop([0x6d], this, a, b) }                               // (Op I32, Op I32) -> Op I32
+  div_u (a, b) { return binop([0x6e], this, a, b) }                               // (Op I32, Op I32) -> Op I32
+  rem_s (a, b) { return binop([0x6f], this, a, b) }                               // (Op I32, Op I32) -> Op I32
+  rem_u (a, b) { return binop([0x70], this, a, b) }                               // (Op I32, Op I32) -> Op I32
+  and (a, b) { return binop([0x71], this, a, b) }                                 // (Op I32, Op I32) -> Op I32
+  or (a, b) { return binop([0x72], this, a, b) }                                  // (Op I32, Op I32) -> Op I32
+  xor (a, b) { return binop([0x73], this, a, b) }                                 // (Op I32, Op I32) -> Op I32
+  shl (a, b) { return binop([0x74], this, a, b) }                                 // (Op I32, Op I32) -> Op I32
+  shr_s (a, b) { return binop([0x75], this, a, b) }                               // (Op I32, Op I32) -> Op I32
+  shr_u (a, b) { return binop([0x76], this, a, b) }                               // (Op I32, Op I32) -> Op I32
+  rotl (a, b) { return binop([0x77], this, a, b) }                                // (Op I32, Op I32) -> Op I32
+  rotr (a, b) { return binop([0x78], this, a, b) }                                // (Op I32, Op I32) -> Op I32
 
   // Conversion
   wrap_i64 (a) { return new instr_pre1([0xa7], this, a) }                         // Op I64 -> Op I32
@@ -524,12 +578,12 @@ class i32ops extends type_atom {
   extend16_s (a) { return new instr_pre1([0xc1], this, a) }                       // Op I32 -> Op I32
 
   // Atomic operations
-  atomic_load (mi, addr) { return memload_atomic(0x10, this, mi, addr) }          // (MemImm, Op Int) -> Op I32
-  atomic_load8_u (mi, addr) { return memload_atomic(0x12, this, mi, addr) }       // (MemImm, Op Int) -> Op I32
-  atomic_load16_u (mi, addr) { return memload_atomic(0x13, this, mi, addr) }      // (MemImm, Op Int) -> Op I32
-  atomic_store (mi, addr, v) { return memstore_atomic(0x17, mi, addr, v) }        // (MemImm, Op Int, Op I32) -> Op Void
-  atomic_store8_u (mi, addr, v) { return memstore_atomic(0x19, mi, addr, v) }     // (MemImm, Op Int, Op I32) -> Op Void
-  atomic_store16_u (mi, addr, v) { return memstore_atomic(0x1a, mi, addr, v) }    // (MemImm, Op Int, Op I32) -> Op Void
+  atomic_load (mi, addr) { return memload([0x10, 0xfe], this, mi, addr) }         // (MemImm, Op Int) -> Op I32
+  atomic_load8_u (mi, addr) { return memload([0x12, 0xfe], this, mi, addr) }      // (MemImm, Op Int) -> Op I32
+  atomic_load16_u (mi, addr) { return memload([0x13, 0xfe], this, mi, addr) }     // (MemImm, Op Int) -> Op I32
+  atomic_store (mi, addr, v) { return memstore([0x17, 0xfe], mi, addr, v) }       // (MemImm, Op Int, Op I32) -> Op Void
+  atomic_store8_u (mi, addr, v) { return memstore([0x19, 0xfe], mi, addr, v) }    // (MemImm, Op Int, Op I32) -> Op Void
+  atomic_store16_u (mi, addr, v) { return memstore([0x1a, 0xfe], mi, addr, v) }   // (MemImm, Op Int, Op I32) -> Op Void
 
   atomic_add (mi, addr, v) { return rmw_atomic(0x1e, this, mi, addr, v) }         // (MemImm, Op Int, Op I32) -> Op I32
   atomic_add8_u (mi, addr, v) { return rmw_atomic(0x20, this, mi, addr, v) }      // (MemImm, Op Int, Op I32) -> Op I32
@@ -564,51 +618,51 @@ class i64ops extends type_atom {
   const (v) { return this.constv(varint64(BigInt(v))) }                           // int64 -> Op I64
 
   // Memory
-  load (mi, addr) { return memload(0x29, this, mi, addr) }                        // (MemImm, Op Int) -> Op I64
-  load8_s (mi, addr) { return memload(0x30, this, mi, addr) }                     // (MemImm, Op Int) -> Op I64
-  load8_u (mi, addr) { return memload(0x31, this, mi, addr) }                     // (MemImm, Op Int) -> Op I64
-  load16_s (mi, addr) { return memload(0x32, this, mi, addr) }                    // (MemImm, Op Int) -> Op I64
-  load16_u (mi, addr) { return memload(0x33, this, mi, addr) }                    // (MemImm, Op Int) -> Op I64
-  load32_s (mi, addr) { return memload(0x34, this, mi, addr) }                    // (MemImm, Op Int) -> Op I64
-  load32_u (mi, addr) { return memload(0x35, this, mi, addr) }                    // (MemImm, Op Int) -> Op I64
-  store (mi, addr, v) { return memstore(0x37, mi, addr, v) }                      // (MemImm, Op Int, Op I64) -> Op Void
-  store8 (mi, addr, v) { return memstore(0x3c, mi, addr, v) }                     // (MemImm, Op Int, Op I64) -> Op Void
-  store16 (mi, addr, v) { return memstore(0x3d, mi, addr, v) }                    // (MemImm, Op Int, Op I64) -> Op Void
-  store32 (mi, addr, v) { return memstore(0x3e, mi, addr, v) }                    // (MemImm, Op Int, Op I64) -> Op Void
+  load (mi, addr) { return memload([0x29], this, mi, addr) }                      // (MemImm, Op Int) -> Op I64
+  load8_s (mi, addr) { return memload([0x30], this, mi, addr) }                   // (MemImm, Op Int) -> Op I64
+  load8_u (mi, addr) { return memload([0x31], this, mi, addr) }                   // (MemImm, Op Int) -> Op I64
+  load16_s (mi, addr) { return memload([0x32], this, mi, addr) }                  // (MemImm, Op Int) -> Op I64
+  load16_u (mi, addr) { return memload([0x33], this, mi, addr) }                  // (MemImm, Op Int) -> Op I64
+  load32_s (mi, addr) { return memload([0x34], this, mi, addr) }                  // (MemImm, Op Int) -> Op I64
+  load32_u (mi, addr) { return memload([0x35], this, mi, addr) }                  // (MemImm, Op Int) -> Op I64
+  store (mi, addr, v) { return memstore([0x37], mi, addr, v) }                    // (MemImm, Op Int, Op I64) -> Op Void
+  store8 (mi, addr, v) { return memstore([0x3c], mi, addr, v) }                   // (MemImm, Op Int, Op I64) -> Op Void
+  store16 (mi, addr, v) { return memstore([0x3d], mi, addr, v) }                  // (MemImm, Op Int, Op I64) -> Op Void
+  store32 (mi, addr, v) { return memstore([0x3e], mi, addr, v) }                  // (MemImm, Op Int, Op I64) -> Op Void
   addrIsAligned (mi, addr) { return addrIsAligned(3, mi[0].v, mi[1].v, addr) }    // (MemImm, number) -> boolean
 
   // Comparison
-  eqz (a) { return testop(0x50, this, a) }                                        // Op I64 -> Op I32
-  eq (a, b) { return relop(0x51, this, a, b) }                                    // (Op I64, Op I64) -> Op I32
-  ne (a, b) { return relop(0x52, this, a, b) }                                    // (Op I64, Op I64) -> Op I32
-  lt_s (a, b) { return relop(0x53, this, a, b) }                                  // (Op I64, Op I64) -> Op I32
-  lt_u (a, b) { return relop(0x54, this, a, b) }                                  // (Op I64, Op I64) -> Op I32
-  gt_s (a, b) { return relop(0x55, this, a, b) }                                  // (Op I64, Op I64) -> Op I32
-  gt_u (a, b) { return relop(0x56, this, a, b) }                                  // (Op I64, Op I64) -> Op I32
-  le_s (a, b) { return relop(0x57, this, a, b) }                                  // (Op I64, Op I64) -> Op I32
-  le_u (a, b) { return relop(0x58, this, a, b) }                                  // (Op I64, Op I64) -> Op I32
-  ge_s (a, b) { return relop(0x59, this, a, b) }                                  // (Op I64, Op I64) -> Op I32
-  ge_u (a, b) { return relop(0x5a, this, a, b) }                                  // (Op I64, Op I64) -> Op I32
+  eqz (a) { return testop([0x50], a) }                                            // Op I64 -> Op I32
+  eq (a, b) { return relop([0x51], a, b) }                                        // (Op I64, Op I64) -> Op I32
+  ne (a, b) { return relop([0x52], a, b) }                                        // (Op I64, Op I64) -> Op I32
+  lt_s (a, b) { return relop([0x53], a, b) }                                      // (Op I64, Op I64) -> Op I32
+  lt_u (a, b) { return relop([0x54], a, b) }                                      // (Op I64, Op I64) -> Op I32
+  gt_s (a, b) { return relop([0x55], a, b) }                                      // (Op I64, Op I64) -> Op I32
+  gt_u (a, b) { return relop([0x56], a, b) }                                      // (Op I64, Op I64) -> Op I32
+  le_s (a, b) { return relop([0x57], a, b) }                                      // (Op I64, Op I64) -> Op I32
+  le_u (a, b) { return relop([0x58], a, b) }                                      // (Op I64, Op I64) -> Op I32
+  ge_s (a, b) { return relop([0x59], a, b) }                                      // (Op I64, Op I64) -> Op I32
+  ge_u (a, b) { return relop([0x5a], a, b) }                                      // (Op I64, Op I64) -> Op I32
 
   // Numeric
-  clz (a) { return unop(0x79, this, a) }                                          // Op I64 -> Op I64
-  ctz (a) { return unop(0x7a, this, a) }                                          // Op I64 -> Op I64
-  popcnt (a) { return unop(0x7b, this, a) }                                       // Op I64 -> Op I64
-  add (a, b) { return binop(0x7c, this, a, b) }                                   // (Op I64, Op I64) -> Op I64
-  sub (a, b) { return binop(0x7d, this, a, b) }                                   // (Op I64, Op I64) -> Op I64
-  mul (a, b) { return binop(0x7e, this, a, b) }                                   // (Op I64, Op I64) -> Op I64
-  div_s (a, b) { return binop(0x7f, this, a, b) }                                 // (Op I64, Op I64) -> Op I64
-  div_u (a, b) { return binop(0x80, this, a, b) }                                 // (Op I64, Op I64) -> Op I64
-  rem_s (a, b) { return binop(0x81, this, a, b) }                                 // (Op I64, Op I64) -> Op I64
-  rem_u (a, b) { return binop(0x82, this, a, b) }                                 // (Op I64, Op I64) -> Op I64
-  and (a, b) { return binop(0x83, this, a, b) }                                   // (Op I64, Op I64) -> Op I64
-  or (a, b) { return binop(0x84, this, a, b) }                                    // (Op I64, Op I64) -> Op I64
-  xor (a, b) { return binop(0x85, this, a, b) }                                   // (Op I64, Op I64) -> Op I64
-  shl (a, b) { return binop(0x86, this, a, b) }                                   // (Op I64, Op I64) -> Op I64
-  shr_s (a, b) { return binop(0x87, this, a, b) }                                 // (Op I64, Op I64) -> Op I64
-  shr_u (a, b) { return binop(0x88, this, a, b) }                                 // (Op I64, Op I64) -> Op I64
-  rotl (a, b) { return binop(0x89, this, a, b) }                                  // (Op I64, Op I64) -> Op I64
-  rotr (a, b) { return binop(0x8a, this, a, b) }                                  // (Op I64, Op I64) -> Op I64
+  clz (a) { return unop([0x79], this, a) }                                        // Op I64 -> Op I64
+  ctz (a) { return unop([0x7a], this, a) }                                        // Op I64 -> Op I64
+  popcnt (a) { return unop([0x7b], this, a) }                                     // Op I64 -> Op I64
+  add (a, b) { return binop([0x7c], this, a, b) }                                 // (Op I64, Op I64) -> Op I64
+  sub (a, b) { return binop([0x7d], this, a, b) }                                 // (Op I64, Op I64) -> Op I64
+  mul (a, b) { return binop([0x7e], this, a, b) }                                 // (Op I64, Op I64) -> Op I64
+  div_s (a, b) { return binop([0x7f], this, a, b) }                               // (Op I64, Op I64) -> Op I64
+  div_u (a, b) { return binop([0x80], this, a, b) }                               // (Op I64, Op I64) -> Op I64
+  rem_s (a, b) { return binop([0x81], this, a, b) }                               // (Op I64, Op I64) -> Op I64
+  rem_u (a, b) { return binop([0x82], this, a, b) }                               // (Op I64, Op I64) -> Op I64
+  and (a, b) { return binop([0x83], this, a, b) }                                 // (Op I64, Op I64) -> Op I64
+  or (a, b) { return binop([0x84], this, a, b) }                                  // (Op I64, Op I64) -> Op I64
+  xor (a, b) { return binop([0x85], this, a, b) }                                 // (Op I64, Op I64) -> Op I64
+  shl (a, b) { return binop([0x86], this, a, b) }                                 // (Op I64, Op I64) -> Op I64
+  shr_s (a, b) { return binop([0x87], this, a, b) }                               // (Op I64, Op I64) -> Op I64
+  shr_u (a, b) { return binop([0x88], this, a, b) }                               // (Op I64, Op I64) -> Op I64
+  rotl (a, b) { return binop([0x89], this, a, b) }                                // (Op I64, Op I64) -> Op I64
+  rotr (a, b) { return binop([0x8a], this, a, b) }                                // (Op I64, Op I64) -> Op I64
 
   // Conversion
   extend_i32_s (a) { return new instr_pre1([0xac], this, a) }                     // Op I32 -> Op I64
@@ -631,14 +685,14 @@ class i64ops extends type_atom {
   extend32_s (a) { return new instr_pre1([0xc4], this, a) }                       // Op I64 -> Op I64
 
   // Atomic operations
-  atomic_load (mi, addr) { return memload_atomic(0x11, this, mi, addr) }          // (MemImm, Op Int) -> Op I32
-  atomic_load8_u (mi, addr) { return memload_atomic(0x14, this, mi, addr) }       // (MemImm, Op Int) -> Op I32
-  atomic_load16_u (mi, addr) { return memload_atomic(0x15, this, mi, addr) }      // (MemImm, Op Int) -> Op I32
-  atomic_load32_u (mi, addr) { return memload_atomic(0x16, this, mi, addr) }      // (MemImm, Op Int) -> Op I32
-  atomic_store (mi, addr, v) { return memstore_atomic(0x18, mi, addr, v) }        // (MemImm, Op Int, Op I32) -> Op Void
-  atomic_store8_u (mi, addr, v) { return memstore_atomic(0x1b, mi, addr, v) }     // (MemImm, Op Int, Op I32) -> Op Void
-  atomic_store16_u (mi, addr, v) { return memstore_atomic(0x1c, mi, addr, v) }    // (MemImm, Op Int, Op I32) -> Op Void
-  atomic_store32_u (mi, addr, v) { return memstore_atomic(0x1d, mi, addr, v) }    // (MemImm, Op Int, Op I32) -> Op Void
+  atomic_load (mi, addr) { return memload([0x11, 0xfe], this, mi, addr) }         // (MemImm, Op Int) -> Op I32
+  atomic_load8_u (mi, addr) { return memload([0x14, 0xfe], this, mi, addr) }      // (MemImm, Op Int) -> Op I32
+  atomic_load16_u (mi, addr) { return memload([0x15, 0xfe], this, mi, addr) }     // (MemImm, Op Int) -> Op I32
+  atomic_load32_u (mi, addr) { return memload([0x16, 0xfe], this, mi, addr) }     // (MemImm, Op Int) -> Op I32
+  atomic_store (mi, addr, v) { return memstore([0x18, 0xfe], mi, addr, v) }       // (MemImm, Op Int, Op I32) -> Op Void
+  atomic_store8_u (mi, addr, v) { return memstore([0x1b, 0xfe], mi, addr, v) }    // (MemImm, Op Int, Op I32) -> Op Void
+  atomic_store16_u (mi, addr, v) { return memstore([0x1c, 0xfe], mi, addr, v) }   // (MemImm, Op Int, Op I32) -> Op Void
+  atomic_store32_u (mi, addr, v) { return memstore([0x1d, 0xfe], mi, addr, v) }   // (MemImm, Op Int, Op I32) -> Op Void
 
   atomic_add (mi, addr, v) { return rmw_atomic(0x1f, this, mi, addr, v) }         // (MemImm, Op Int, Op I32) -> Op I32
   atomic_add8_u (mi, addr, v) { return rmw_atomic(0x22, this, mi, addr, v) }      // (MemImm, Op Int, Op I32) -> Op I32
@@ -681,33 +735,33 @@ class f32ops extends type_atom {
   const (v) { return this.constv(float32(v)) }                                    // float32 -> Op F32
 
   // Memory
-  load (mi, addr) { return memload(0x2a, this, mi, addr) }                        // (MemImm, Op Int) -> F32
-  store (mi, addr, v) { return memstore(0x38, mi, addr, v) }                      // (MemImm, Op Int, Op F32) -> Op Void
+  load (mi, addr) { return memload([0x2a], this, mi, addr) }                      // (MemImm, Op Int) -> F32
+  store (mi, addr, v) { return memstore([0x38], mi, addr, v) }                    // (MemImm, Op Int, Op F32) -> Op Void
   addrIsAligned (mi, addr) { return addrIsAligned(2, mi[0].v, mi[1].v, addr) }    // (MemImm, number) -> boolean
 
   // Comparison
-  eq (a, b) { return relop(0x5b, this, a, b) }                                    // (Op F32, Op F32) -> Op I32
-  ne (a, b) { return relop(0x5c, this, a, b) }                                    // (Op F32, Op F32) -> Op I32
-  lt (a, b) { return relop(0x5d, this, a, b) }                                    // (Op F32, Op F32) -> Op I32
-  gt (a, b) { return relop(0x5e, this, a, b) }                                    // (Op F32, Op F32) -> Op I32
-  le (a, b) { return relop(0x5f, this, a, b) }                                    // (Op F32, Op F32) -> Op I32
-  ge (a, b) { return relop(0x60, this, a, b) }                                    // (Op F32, Op F32) -> Op I32
+  eq (a, b) { return relop([0x5b], a, b) }                                        // (Op F32, Op F32) -> Op I32
+  ne (a, b) { return relop([0x5c], a, b) }                                        // (Op F32, Op F32) -> Op I32
+  lt (a, b) { return relop([0x5d], a, b) }                                        // (Op F32, Op F32) -> Op I32
+  gt (a, b) { return relop([0x5e], a, b) }                                        // (Op F32, Op F32) -> Op I32
+  le (a, b) { return relop([0x5f], a, b) }                                        // (Op F32, Op F32) -> Op I32
+  ge (a, b) { return relop([0x60], a, b) }                                        // (Op F32, Op F32) -> Op I32
 
   // Numeric
-  abs (a) { return unop(0x8b, this, a) }                                          // Op F32 -> Op F32
-  neg (a) { return unop(0x8c, this, a) }                                          // Op F32 -> Op F32
-  ceil (a) { return unop(0x8d, this, a) }                                         // Op F32 -> Op F32
-  floor (a) { return unop(0x8e, this, a) }                                        // Op F32 -> Op F32
-  trunc (a) { return unop(0x8f, this, a) }                                        // Op F32 -> Op F32
-  nearest (a) { return unop(0x90, this, a) }                                      // Op F32 -> Op F32
-  sqrt (a) { return unop(0x91, this, a) }                                         // Op F32 -> Op F32
-  add (a, b) { return binop(0x92, this, a, b) }                                   // (Op F32, Op F32) -> Op F32
-  sub (a, b) { return binop(0x93, this, a, b) }                                   // (Op F32, Op F32) -> Op F32
-  mul (a, b) { return binop(0x94, this, a, b) }                                   // (Op F32, Op F32) -> Op F32
-  div (a, b) { return binop(0x95, this, a, b) }                                   // (Op F32, Op F32) -> Op F32
-  min (a, b) { return binop(0x96, this, a, b) }                                   // (Op F32, Op F32) -> Op F32
-  max (a, b) { return binop(0x97, this, a, b) }                                   // (Op F32, Op F32) -> Op F32
-  copysign (a, b) { return binop(0x98, this, a, b) }                              // (Op F32, Op F32) -> Op F32
+  abs (a) { return unop([0x8b], this, a) }                                        // Op F32 -> Op F32
+  neg (a) { return unop([0x8c], this, a) }                                        // Op F32 -> Op F32
+  ceil (a) { return unop([0x8d], this, a) }                                       // Op F32 -> Op F32
+  floor (a) { return unop([0x8e], this, a) }                                      // Op F32 -> Op F32
+  trunc (a) { return unop([0x8f], this, a) }                                      // Op F32 -> Op F32
+  nearest (a) { return unop([0x90], this, a) }                                    // Op F32 -> Op F32
+  sqrt (a) { return unop([0x91], this, a) }                                       // Op F32 -> Op F32
+  add (a, b) { return binop([0x92], this, a, b) }                                 // (Op F32, Op F32) -> Op F32
+  sub (a, b) { return binop([0x93], this, a, b) }                                 // (Op F32, Op F32) -> Op F32
+  mul (a, b) { return binop([0x94], this, a, b) }                                 // (Op F32, Op F32) -> Op F32
+  div (a, b) { return binop([0x95], this, a, b) }                                 // (Op F32, Op F32) -> Op F32
+  min (a, b) { return binop([0x96], this, a, b) }                                 // (Op F32, Op F32) -> Op F32
+  max (a, b) { return binop([0x97], this, a, b) }                                 // (Op F32, Op F32) -> Op F32
+  copysign (a, b) { return binop([0x98], this, a, b) }                            // (Op F32, Op F32) -> Op F32
 
   // Conversion
   convert_i32_s (a) { return new instr_pre1([0xb2], this, a) }                    // Op I32 -> Op F32
@@ -725,33 +779,33 @@ class f64ops extends type_atom {
   const (v) { return this.constv(float64(v)) }                                    // float64 -> Op F64
 
   // Memory
-  load (mi, addr) { return memload(0x2b, this, mi, addr) }                        // (MemImm, Op Int) -> F64
-  store (mi, addr, v) { return memstore(0x39, mi, addr, v) }                      // (MemImm, Op Int, Op F64) -> Op Void
+  load (mi, addr) { return memload([0x2b], this, mi, addr) }                      // (MemImm, Op Int) -> F64
+  store (mi, addr, v) { return memstore([0x39], mi, addr, v) }                    // (MemImm, Op Int, Op F64) -> Op Void
   addrIsAligned (mi, addr) { return addrIsAligned(3, mi[0].v, mi[1].v, addr) }    // (MemImm, number) -> boolean
 
   // Comparison
-  eq (a, b) { return relop(0x61, this, a, b) }                                    // (Op F64, Op F64) -> Op I32
-  ne (a, b) { return relop(0x62, this, a, b) }                                    // (Op F64, Op F64) -> Op I32
-  lt (a, b) { return relop(0x63, this, a, b) }                                    // (Op F64, Op F64) -> Op I32
-  gt (a, b) { return relop(0x64, this, a, b) }                                    // (Op F64, Op F64) -> Op I32
-  le (a, b) { return relop(0x65, this, a, b) }                                    // (Op F64, Op F64) -> Op I32
-  ge (a, b) { return relop(0x66, this, a, b) }                                    // (Op F64, Op F64) -> Op I32
+  eq (a, b) { return relop([0x61], a, b) }                                        // (Op F64, Op F64) -> Op I32
+  ne (a, b) { return relop([0x62], a, b) }                                        // (Op F64, Op F64) -> Op I32
+  lt (a, b) { return relop([0x63], a, b) }                                        // (Op F64, Op F64) -> Op I32
+  gt (a, b) { return relop([0x64], a, b) }                                        // (Op F64, Op F64) -> Op I32
+  le (a, b) { return relop([0x65], a, b) }                                        // (Op F64, Op F64) -> Op I32
+  ge (a, b) { return relop([0x66], a, b) }                                        // (Op F64, Op F64) -> Op I32
 
   // Numeric
-  abs (a) { return unop(0x99, this, a) }                                          // Op F64 -> Op F64
-  neg (a) { return unop(0x9a, this, a) }                                          // Op F64 -> Op F64
-  ceil (a) { return unop(0x9b, this, a) }                                         // Op F64 -> Op F64
-  floor (a) { return unop(0x9c, this, a) }                                        // Op F64 -> Op F64
-  trunc (a) { return unop(0x9d, this, a) }                                        // Op F64 -> Op F64
-  nearest (a) { return unop(0x9e, this, a) }                                      // Op F64 -> Op F64
-  sqrt (a) { return unop(0x9f, this, a) }                                         // Op F64 -> Op F64
-  add (a, b) { return binop(0xa0, this, a, b) }                                   // (Op F64, Op F64) -> Op F64
-  sub (a, b) { return binop(0xa1, this, a, b) }                                   // (Op F64, Op F64) -> Op F64
-  mul (a, b) { return binop(0xa2, this, a, b) }                                   // (Op F64, Op F64) -> Op F64
-  div (a, b) { return binop(0xa3, this, a, b) }                                   // (Op F64, Op F64) -> Op F64
-  min (a, b) { return binop(0xa4, this, a, b) }                                   // (Op F64, Op F64) -> Op F64
-  max (a, b) { return binop(0xa5, this, a, b) }                                   // (Op F64, Op F64) -> Op F64
-  copysign (a, b) { return binop(0xa6, this, a, b) }                              // (Op F64, Op F64) -> Op F64
+  abs (a) { return unop([0x99], this, a) }                                        // Op F64 -> Op F64
+  neg (a) { return unop([0x9a], this, a) }                                        // Op F64 -> Op F64
+  ceil (a) { return unop([0x9b], this, a) }                                       // Op F64 -> Op F64
+  floor (a) { return unop([0x9c], this, a) }                                      // Op F64 -> Op F64
+  trunc (a) { return unop([0x9d], this, a) }                                      // Op F64 -> Op F64
+  nearest (a) { return unop([0x9e], this, a) }                                    // Op F64 -> Op F64
+  sqrt (a) { return unop([0x9f], this, a) }                                       // Op F64 -> Op F64
+  add (a, b) { return binop([0xa0], this, a, b) }                                 // (Op F64, Op F64) -> Op F64
+  sub (a, b) { return binop([0xa1], this, a, b) }                                 // (Op F64, Op F64) -> Op F64
+  mul (a, b) { return binop([0xa2], this, a, b) }                                 // (Op F64, Op F64) -> Op F64
+  div (a, b) { return binop([0xa3], this, a, b) }                                 // (Op F64, Op F64) -> Op F64
+  min (a, b) { return binop([0xa4], this, a, b) }                                 // (Op F64, Op F64) -> Op F64
+  max (a, b) { return binop([0xa5], this, a, b) }                                 // (Op F64, Op F64) -> Op F64
+  copysign (a, b) { return binop([0xa6], this, a, b) }                            // (Op F64, Op F64) -> Op F64
 
   // Conversion
   convert_s_i32 (a) { return new instr_pre1([0xb7], this, a) }                    // Op I32 -> Op F64
@@ -761,6 +815,311 @@ class f64ops extends type_atom {
   promote_f64 (a) { return new instr_pre1([0xbb], this, a) }                      // Op F32 -> Op F64
   reinterpret_i64 (a) { return new instr_pre1([0xbf], this, a) }                  // Op I64 -> Op F64
 }
+
+// type_atom v128ops => v128ops : V128ops
+class v128ops extends type_atom {
+  // Constant
+  // Value must be constructed with one of the iNxM | fNxM functions
+  const (v) { return new instr_imm1([0x0c, 0xfd], this, v) }
+
+  // Memory
+  load (mi, addr) { return memload([0x00, 0xfd], this, mi, addr) }                // (MemImm, Op Int) -> Op V128
+  load8x8_s (mi, addr) { return memload([0x01, 0xfd], this, mi, addr) }           // (MemImm, Op Int) -> Op V128
+  load8x8_u (mi, addr) { return memload([0x02, 0xfd], this, mi, addr) }           // (MemImm, Op Int) -> Op V128
+  load16x4_s (mi, addr) { return memload([0x03, 0xfd], this, mi, addr) }          // (MemImm, Op Int) -> Op V128
+  load16x4_u (mi, addr) { return memload([0x04, 0xfd], this, mi, addr) }          // (MemImm, Op Int) -> Op V128
+  load32x2_s (mi, addr) { return memload([0x05, 0xfd], this, mi, addr) }          // (MemImm, Op Int) -> Op V128
+  load32x2_u (mi, addr) { return memload([0x06, 0xfd], this, mi, addr) }          // (MemImm, Op Int) -> Op V128
+  load8_splat (mi, addr) { return memload([0x07, 0xfd], this, mi, addr) }         // (MemImm, Op Int) -> Op V128
+  load16_splat (mi, addr) { return memload([0x08, 0xfd], this, mi, addr) }        // (MemImm, Op Int) -> Op V128
+  load32_splat (mi, addr) { return memload([0x09, 0xfd], this, mi, addr) }        // (MemImm, Op Int) -> Op V128
+  load64_splat (mi, addr) { return memload([0x0a, 0xfd], this, mi, addr) }        // (MemImm, Op Int) -> Op V128
+  load8_lane (mi, lane, addr) { return memload_lane(0x54, this, mi, lane, addr) }    // (MemImm, uint8, Op Int) -> Op V128
+  load16_lane (mi, lane, addr) { return memload_lane(0x55, this, mi, lane, addr) }   // (MemImm, uint8, Op Int) -> Op V128
+  load32_lane (mi, lane, addr) { return memload_lane(0x56, this, mi, lane, addr) }   // (MemImm, uint8, Op Int) -> Op V128
+  load64_lane (mi, lane, addr) { return memload_lane(0x57, this, mi, lane, addr) }   // (MemImm, uint8, Op Int) -> Op V128
+  load32_zero (mi, addr) { return memload(0x5c, this, mi, addr) }                 // (MemImm, Op Int) -> Op V128
+  load64_zero (mi, addr) { return memload(0x5d, this, mi, addr) }                 // (MemImm, Op Int) -> Op V128
+  store (mi, addr, v) { return memstore([0x0b, 0xfd], mi, addr, v) }              // (MemImm, Op Int, Op Result) -> Op Void
+  store8_lane (mi, lane, addr, v) { return memstore_lane(0x58, mi, lane, addr, v) }  // (MemImm, uint8, Op Int, Op Result) -> Op Void
+  store16_lane (mi, lane, addr, v) { return memstore_lane(0x59, mi, lane, addr, v) } // (MemImm, uint8, Op Int, Op Result) -> Op Void
+  store32_lane (mi, lane, addr, v) { return memstore_lane(0x5a, mi, lane, addr, v) } // (MemImm, uint8, Op Int, Op Result) -> Op Void
+  store64_lane (mi, lane, addr, v) { return memstore_lane(0x5b, mi, lane, addr, v) } // (MemImm, uint8, Op Int, Op Result) -> Op Void
+
+  // Bitwise operations
+  not (a) { return unop([0x4d, 0xfd], this, a) }                                  // Op V128 -> Op V128
+  and (a, b) { return binop([0x4e, 0xfd], this, a, b) }                           // (Op V128, Op V128) -> Op V128
+  andnot (a, b) { return binop([0x4f, 0xfd], this, a, b) }                        // (Op V128, Op V128) -> Op V128
+  or (a, b) { return binop([0x50, 0xfd], this, a, b) }                            // (Op V128, Op V128) -> Op V128
+  xor (a, b) { return binop([0x51, 0xfd], this, a, b) }                           // (Op V128, Op V128) -> Op V128
+  bitselect (a, b, c) { return ternop([0x52, 0xfd], this, a, b, c) }              // (Op V128, Op V128, Op V128) -> Op V128
+
+  // Predicate
+  any_true (a) { return testop([0x53, 0xfd], a) }                                 // Op V128 -> Op I32
+}
+
+// type_atom i8x16ops => i8x16ops : V128ops
+class i8x16ops extends type_atom {
+  // Lane operations
+  shuffle (lanes, a, b) {                                                         // ([uint8]{16}, Op V128, Op V128) -> Op V128
+    assert(lanes.every(v => v >= 0 && v < 32), "lanes", lanes, ".some v: v < 0 || v >= 32");
+    return new instr_pre_imm([0x0d, 0xfd], c.v128, [a, b], lanes) }
+  swizzle (a, b) { return binop([0x0e, 0xfd], c.v128, a, b) }                     // (Op V128, Op V128) -> Op V128
+  splat (a) { return new instr_pre1([0x0f, 0xfd], c.v128, a) }                    // Op I32 -> Op V128
+  extract_lane_s (lane, a) { return new instr_pre_imm([0x15, 0xfd], c.i32, [a], [lane]) }      // (uint8, Op V128) -> Op I32
+  extract_lane_u (lane, a) { return new instr_pre_imm([0x16, 0xfd], c.i32, [a], [lane]) }      // (uint8, Op V128) -> Op I32
+  replace_lane (lane, a, v) { return new instr_pre_imm([0x17, 0xfd], c.v128, [a, v], [lane]) } // (uint8, Op V128, Op I32) -> Op V128
+
+  // Comparison
+  eq (a, b) { return binop([0x23, 0xfd], c.v128, a, b) }                          // (Op V128, Op V128) -> Op V128
+  ne (a, b) { return binop([0x24, 0xfd], c.v128, a, b) }                          // (Op V128, Op V128) -> Op V128
+  lt_s (a, b) { return binop([0x25, 0xfd], c.v128, a, b) }                        // (Op V128, Op V128) -> Op V128
+  lt_u (a, b) { return binop([0x26, 0xfd], c.v128, a, b) }                        // (Op V128, Op V128) -> Op V128
+  gt_s (a, b) { return binop([0x27, 0xfd], c.v128, a, b) }                        // (Op V128, Op V128) -> Op V128
+  gt_u (a, b) { return binop([0x28, 0xfd], c.v128, a, b) }                        // (Op V128, Op V128) -> Op V128
+  le_s (a, b) { return binop([0x29, 0xfd], c.v128, a, b) }                        // (Op V128, Op V128) -> Op V128
+  le_u (a, b) { return binop([0x2a, 0xfd], c.v128, a, b) }                        // (Op V128, Op V128) -> Op V128
+  ge_s (a, b) { return binop([0x2b, 0xfd], c.v128, a, b) }                        // (Op V128, Op V128) -> Op V128
+  ge_u (a, b) { return binop([0x2c, 0xfd], c.v128, a, b) }                        // (Op V128, Op V128) -> Op V128
+
+  // Numeric
+  abs (a) { return unop([0x60, 0xfd], c.v128, a) }                                // Op V128 -> Op V128
+  neg (a) { return unop([0x61, 0xfd], c.v128, a) }                                // Op V128 -> Op V128
+  popcnt (a) { return unop([0x62, 0xfd], c.v128, a) }                             // Op V128 -> Op V128
+  all_true (a) { return testop([0x63, 0xfd], a) }                                 // Op V128 -> Op I32
+  bitmask (a) { return testop([0x64, 0xfd], a) }                                  // Op V128 -> Op I32
+  narrow_i16x8_s (a, b) { return binop([0x65, 0xfd], c.v128, a, b) }              // (Op V128 -> Op V128) -> Op V128
+  narrow_i16x8_u (a, b) { return binop([0x66, 0xfd], c.v128, a, b) }              // (Op V128 -> Op V128) -> Op V128
+  shl (a, v) { return binop([0x6b, 0xfd], c.v128, a, v) }                         // (Op V128 -> Op I32) -> Op V128
+  shr_s (a, v) { return binop([0x6c, 0xfd], c.v128, a, v) }                       // (Op V128 -> Op I32) -> Op V128
+  shr_u (a, v) { return binop([0x6b, 0xfd], c.v128, a, v) }                       // (Op V128 -> Op I32) -> Op V128
+  add (a, b) { return binop([0x6e, 0xfd], c.v128, a, b) }                         // (Op V128 -> Op V128) -> Op V128
+  add_sat_s (a, b) { return binop([0x6f, 0xfd], c.v128, a, b) }                   // (Op V128 -> Op V128) -> Op V128
+  add_sat_u (a, b) { return binop([0x70, 0xfd], c.v128, a, b) }                   // (Op V128 -> Op V128) -> Op V128
+  sub (a, b) { return binop([0x71, 0xfd], c.v128, a, b) }                         // (Op V128 -> Op V128) -> Op V128
+  sub_sat_s (a, b) { return binop([0x72, 0xfd], c.v128, a, b) }                   // (Op V128 -> Op V128) -> Op V128
+  sub_sat_u (a, b) { return binop([0x73, 0xfd], c.v128, a, b) }                   // (Op V128 -> Op V128) -> Op V128
+  min_s (a, b) { return binop([0x76, 0xfd], c.v128, a, b) }                       // (Op V128 -> Op V128) -> Op V128
+  min_u (a, b) { return binop([0x77, 0xfd], c.v128, a, b) }                       // (Op V128 -> Op V128) -> Op V128
+  max_s (a, b) { return binop([0x78, 0xfd], c.v128, a, b) }                       // (Op V128 -> Op V128) -> Op V128
+  max_u (a, b) { return binop([0x79, 0xfd], c.v128, a, b) }                       // (Op V128 -> Op V128) -> Op V128
+  avgr_u (a, b) { return binop([0x7b, 0xfd], c.v128, a, b) }                      // (Op V128 -> Op V128) -> Op V128
+}
+
+// type_atom i16x8ops => i16x8ops : V128ops
+class i16x8ops extends type_atom {
+  // Lane operations
+  splat (a) { return new instr_pre1([0x10, 0xfd], c.v128, a) }                    // Op I32 -> Op V128
+  extract_lane_s (lane, a) { return new instr_pre_imm([0x18, 0xfd], c.i32, [a], [lane]) }      // (uint8, Op V128) -> Op I32
+  extract_lane_u (lane, a) { return new instr_pre_imm([0x19, 0xfd], c.i32, [a], [lane]) }      // (uint8, Op V128) -> Op I32
+  replace_lane (lane, a, v) { return new instr_pre_imm([0x1a, 0xfd], c.v128, [a, v], [lane]) } // (uint8, Op V128, Op I32) -> Op V128
+
+  // Comparison
+  eq (a, b) { return binop([0x2d, 0xfd], c.v128, a, b) }                          // (Op V128, Op V128) -> Op V128
+  ne (a, b) { return binop([0x2e, 0xfd], c.v128, a, b) }                          // (Op V128, Op V128) -> Op V128
+  lt_s (a, b) { return binop([0x2f, 0xfd], c.v128, a, b) }                        // (Op V128, Op V128) -> Op V128
+  lt_u (a, b) { return binop([0x30, 0xfd], c.v128, a, b) }                        // (Op V128, Op V128) -> Op V128
+  gt_s (a, b) { return binop([0x31, 0xfd], c.v128, a, b) }                        // (Op V128, Op V128) -> Op V128
+  gt_u (a, b) { return binop([0x32, 0xfd], c.v128, a, b) }                        // (Op V128, Op V128) -> Op V128
+  le_s (a, b) { return binop([0x33, 0xfd], c.v128, a, b) }                        // (Op V128, Op V128) -> Op V128
+  le_u (a, b) { return binop([0x34, 0xfd], c.v128, a, b) }                        // (Op V128, Op V128) -> Op V128
+  ge_s (a, b) { return binop([0x35, 0xfd], c.v128, a, b) }                        // (Op V128, Op V128) -> Op V128
+  ge_u (a, b) { return binop([0x36, 0xfd], c.v128, a, b) }                        // (Op V128, Op V128) -> Op V128
+
+  // Numeric
+  extadd_pairwise_i8x16_s (a) { return unop([0x7c, 0xfd], c.v128, a) }            // Op V128 -> Op V128
+  extadd_pairwise_i8x16_u (a) { return unop([0x7d, 0xfd], c.v128, a) }            // Op V128 -> Op V128
+  abs (a) { return unop([0x80, 0xfd], c.v128, a) }                                // Op V128 -> Op V128
+  neg (a) { return unop([0x81, 0xfd], c.v128, a) }                                // Op V128 -> Op V128
+  q15mulr_sat_s (a, b) { return binop([0x82, 0xfd], c.v128, a, b) }               // (Op V128 -> Op V128) -> Op V128
+  all_true (a) { return testop([0x83, 0xfd], a) }                                 // Op V128 -> Op I32
+  bitmask (a) { return testop([0x84, 0xfd], a) }                                  // Op V128 -> Op I32
+  narrow_i32x4_s (a, b) { return binop([0x85, 0xfd], c.v128, a, b) }              // (Op V128 -> Op V128) -> Op V128
+  narrow_i32x4_u (a, b) { return binop([0x86, 0xfd], c.v128, a, b) }              // (Op V128 -> Op V128) -> Op V128
+  extend_low_i8x16_s (a) { return unop([0x87, 0xfd], c.v128, a) }                 // Op V128 -> Op V128
+  extend_high_i8x16_s (a) { return unop([0x88, 0xfd], c.v128, a) }                // Op V128 -> Op V128
+  extend_low_i8x16_u (a) { return unop([0x89, 0xfd], c.v128, a) }                 // Op V128 -> Op V128
+  extend_high_i8x16_u (a) { return unop([0x8a, 0xfd], c.v128, a) }                // Op V128 -> Op V128
+  shl (a, v) { return binop([0x8b, 0xfd], c.v128, a, v) }                         // (Op V128 -> Op I32) -> Op V128
+  shr_s (a, v) { return binop([0x8c, 0xfd], c.v128, a, v) }                       // (Op V128 -> Op I32) -> Op V128
+  shr_u (a, v) { return binop([0x8b, 0xfd], c.v128, a, v) }                       // (Op V128 -> Op I32) -> Op V128
+  add (a, b) { return binop([0x8e, 0xfd], c.v128, a, b) }                         // (Op V128 -> Op V128) -> Op V128
+  add_sat_s (a, b) { return binop([0x8f, 0xfd], c.v128, a, b) }                   // (Op V128 -> Op V128) -> Op V128
+  add_sat_u (a, b) { return binop([0x90, 0xfd], c.v128, a, b) }                   // (Op V128 -> Op V128) -> Op V128
+  sub (a, b) { return binop([0x91, 0xfd], c.v128, a, b) }                         // (Op V128 -> Op V128) -> Op V128
+  sub_sat_s (a, b) { return binop([0x92, 0xfd], c.v128, a, b) }                   // (Op V128 -> Op V128) -> Op V128
+  sub_sat_u (a, b) { return binop([0x93, 0xfd], c.v128, a, b) }                   // (Op V128 -> Op V128) -> Op V128
+  mul (a, b) { return binop([0x95, 0xfd], c.v128, a, b) }                         // (Op V128 -> Op V128) -> Op V128
+  min_s (a, b) { return binop([0x96, 0xfd], c.v128, a, b) }                       // (Op V128 -> Op V128) -> Op V128
+  min_u (a, b) { return binop([0x97, 0xfd], c.v128, a, b) }                       // (Op V128 -> Op V128) -> Op V128
+  max_s (a, b) { return binop([0x98, 0xfd], c.v128, a, b) }                       // (Op V128 -> Op V128) -> Op V128
+  max_u (a, b) { return binop([0x99, 0xfd], c.v128, a, b) }                       // (Op V128 -> Op V128) -> Op V128
+  avgr_u (a, b) { return binop([0x9b, 0xfd], c.v128, a, b) }                      // (Op V128 -> Op V128) -> Op V128
+  extmul_low_i8x16_s (a, b) { return binop([0x9c, 0xfd], c.v128, a, b) }          // (Op V128 -> Op V128) -> Op V128
+  extmul_high_i8x16_s (a, b) { return binop([0x9d, 0xfd], c.v128, a, b) }         // (Op V128 -> Op V128) -> Op V128
+  extmul_low_i8x16_u (a, b) { return binop([0x9e, 0xfd], c.v128, a, b) }          // (Op V128 -> Op V128) -> Op V128
+  extmul_high_i8x16_u (a, b) { return binop([0x9f, 0xfd], c.v128, a, b) }         // (Op V128 -> Op V128) -> Op V128
+}
+
+// type_atom i32x4ops => i32x4ops : V128ops
+class i32x4ops extends type_atom {
+  // Lane operations
+  splat (a) { return new instr_pre1([0x11, 0xfd], c.v128, a) }                    // Op I32 -> Op V128
+  extract_lane (lane, a) { return new instr_pre_imm([0x1b, 0xfd], c.i32, [a], [lane]) }        // (uint8, Op V128) -> Op I32
+  replace_lane (lane, a, v) { return new instr_pre_imm([0x1c, 0xfd], c.v128, [a, v], [lane]) } // (uint8, Op V128, Op I32) -> Op I32
+
+  // Comparison
+  eq (a, b) { return binop([0x37, 0xfd], c.v128, a, b) }                          // (Op V128, Op V128) -> Op V128
+  ne (a, b) { return binop([0x38, 0xfd], c.v128, a, b) }                          // (Op V128, Op V128) -> Op V128
+  lt_s (a, b) { return binop([0x39, 0xfd], c.v128, a, b) }                        // (Op V128, Op V128) -> Op V128
+  lt_u (a, b) { return binop([0x3a, 0xfd], c.v128, a, b) }                        // (Op V128, Op V128) -> Op V128
+  gt_s (a, b) { return binop([0x3b, 0xfd], c.v128, a, b) }                        // (Op V128, Op V128) -> Op V128
+  gt_u (a, b) { return binop([0x3c, 0xfd], c.v128, a, b) }                        // (Op V128, Op V128) -> Op V128
+  le_s (a, b) { return binop([0x3d, 0xfd], c.v128, a, b) }                        // (Op V128, Op V128) -> Op V128
+  le_u (a, b) { return binop([0x3e, 0xfd], c.v128, a, b) }                        // (Op V128, Op V128) -> Op V128
+  ge_s (a, b) { return binop([0x3f, 0xfd], c.v128, a, b) }                        // (Op V128, Op V128) -> Op V128
+  ge_u (a, b) { return binop([0x40, 0xfd], c.v128, a, b) }                        // (Op V128, Op V128) -> Op V128
+
+  // Numeric
+  extadd_pairwise_i16x8_s (a) { return unop([0x7e, 0xfd], c.v128, a) }            // Op V128 -> Op V128
+  extadd_pairwise_i16x8_u (a) { return unop([0x7f, 0xfd], c.v128, a) }            // Op V128 -> Op V128
+  abs (a) { return unop([0xa0, 0xfd], c.v128, a) }                                // Op V128 -> Op V128
+  neg (a) { return unop([0xa1, 0xfd], c.v128, a) }                                // Op V128 -> Op V128
+  all_true (a) { return testop([0xa2, 0xfd], a) }                                 // Op V128 -> Op I32
+  bitmask (a) { return testop([0xa4, 0xfd], a) }                                  // Op V128 -> Op I32
+  extend_low_i16x8_s (a) { return unop([0xa7, 0xfd], c.v128, a) }                 // Op V128 -> Op V128
+  extend_high_i16x8_s (a) { return unop([0xa8, 0xfd], c.v128, a) }                // Op V128 -> Op V128
+  extend_low_i16x8_u (a) { return unop([0xa9, 0xfd], c.v128, a) }                 // Op V128 -> Op V128
+  extend_high_i16x8_u (a) { return unop([0xaa, 0xfd], c.v128, a) }                // Op V128 -> Op V128
+  shl (a, v) { return binop([0xab, 0xfd], c.v128, a, v) }                         // (Op V128 -> Op I32) -> Op V128
+  shr_s (a, v) { return binop([0xac, 0xfd], c.v128, a, v) }                       // (Op V128 -> Op I32) -> Op V128
+  shr_u (a, v) { return binop([0xad, 0xfd], c.v128, a, v) }                       // (Op V128 -> Op I32) -> Op V128
+  add (a, b) { return binop([0xae, 0xfd], c.v128, a, b) }                         // (Op V128 -> Op V128) -> Op V128
+  sub (a, b) { return binop([0xb1, 0xfd], c.v128, a, b) }                         // (Op V128 -> Op V128) -> Op V128
+  mul (a, b) { return binop([0xb5, 0xfd], c.v128, a, b) }                         // (Op V128 -> Op V128) -> Op V128
+  min_s (a, b) { return binop([0xb6, 0xfd], c.v128, a, b) }                       // (Op V128 -> Op V128) -> Op V128
+  min_u (a, b) { return binop([0xb7, 0xfd], c.v128, a, b) }                       // (Op V128 -> Op V128) -> Op V128
+  max_s (a, b) { return binop([0xb8, 0xfd], c.v128, a, b) }                       // (Op V128 -> Op V128) -> Op V128
+  max_u (a, b) { return binop([0xb9, 0xfd], c.v128, a, b) }                       // (Op V128 -> Op V128) -> Op V128
+  dot_i16x8_s (a, b) { return binop([0xba, 0xfd], c.v128, a, b) }                 // (Op V128 -> Op V128) -> Op V128
+  extmul_low_i16x8_s (a, b) { return binop([0xbc, 0xfd], c.v128, a, b) }          // (Op V128 -> Op V128) -> Op V128
+  extmul_high_i16x8_s (a, b) { return binop([0xbd, 0xfd], c.v128, a, b) }         // (Op V128 -> Op V128) -> Op V128
+  extmul_low_i16x8_u (a, b) { return binop([0xbe, 0xfd], c.v128, a, b) }          // (Op V128 -> Op V128) -> Op V128
+  extmul_high_i16x8_u (a, b) { return binop([0xbf, 0xfd], c.v128, a, b) }         // (Op V128 -> Op V128) -> Op V128
+  trunc_sat_f32x4_s (a, b) { return binop([0xf8, 0xfd], c.v128, a, b) }           // (Op V128 -> Op V128) -> Op V128
+  trunc_sat_f32x4_u (a, b) { return binop([0xf9, 0xfd], c.v128, a, b) }           // (Op V128 -> Op V128) -> Op V128
+  trunc_sat_f64x2_s_zero (a, b) { return binop([0xfc, 0xfd], c.v128, a, b) }      // (Op V128 -> Op V128) -> Op V128
+  trunc_sat_f64x2_u_zero (a, b) { return binop([0xfd, 0xfd], c.v128, a, b) }      // (Op V128 -> Op V128) -> Op V128
+}
+
+// type_atom i64x2ops => i64x2ops : V128ops
+class i64x2ops extends type_atom {
+  // Lane operations
+  splat (a) { return new instr_pre1([0x12, 0xfd], c.v128, a) }                    // Op I64 -> Op V128
+  extract_lane (lane, a) { return new instr_pre_imm([0x1d, 0xfd], c.i64, [a], [lane]) }        // (uint8, Op V128) -> Op I64
+  replace_lane (lane, a, v) { return new instr_pre_imm([0x1e, 0xfd], c.v128, [a, v], [lane]) } // (uint8, Op V128, Op I64) -> Op V128
+
+  // Comparison
+  eq (a, b) { return binop([0xd6, 0xfd], c.v128, a, b) }                          // (Op V128, Op V128) -> Op V128
+  ne (a, b) { return binop([0xd7, 0xfd], c.v128, a, b) }                          // (Op V128, Op V128) -> Op V128
+  lt_s (a, b) { return binop([0xd8, 0xfd], c.v128, a, b) }                        // (Op V128, Op V128) -> Op V128
+  gt_s (a, b) { return binop([0xd9, 0xfd], c.v128, a, b) }                        // (Op V128, Op V128) -> Op V128
+  le_s (a, b) { return binop([0xda, 0xfd], c.v128, a, b) }                        // (Op V128, Op V128) -> Op V128
+  ge_s (a, b) { return binop([0xdb, 0xfd], c.v128, a, b) }                        // (Op V128, Op V128) -> Op V128
+
+  // Numeric
+  abs (a) { return unop([0xc0, 0xfd], c.v128, a) }                                // Op V128 -> Op V128
+  neg (a) { return unop([0xc1, 0xfd], c.v128, a) }                                // Op V128 -> Op V128
+  all_true (a) { return testop([0xc3, 0xfd], a) }                                 // Op V128 -> Op I32
+  bitmask (a) { return testop([0xc4, 0xfd], a) }                                  // Op V128 -> Op I32
+  extend_low_i32x4_s (a) { return unop([0xc7, 0xfd], c.v128, a) }                 // Op V128 -> Op V128
+  extend_high_i32x4_s (a) { return unop([0xc8, 0xfd], c.v128, a) }                // Op V128 -> Op V128
+  extend_low_i32x4_u (a) { return unop([0xc9, 0xfd], c.v128, a) }                 // Op V128 -> Op V128
+  extend_high_i32x4_u (a) { return unop([0xca, 0xfd], c.v128, a) }                // Op V128 -> Op V128
+  shl (a, v) { return binop([0xcb, 0xfd], c.v128, a, v) }                         // (Op V128 -> Op I64) -> Op V128
+  shr_s (a, v) { return binop([0xcc, 0xfd], c.v128, a, v) }                       // (Op V128 -> Op I64) -> Op V128
+  shr_u (a, v) { return binop([0xcd, 0xfd], c.v128, a, v) }                       // (Op V128 -> Op I64) -> Op V128
+  add (a, b) { return binop([0xce, 0xfd], c.v128, a, b) }                         // (Op V128 -> Op V128) -> Op V128
+  sub (a, b) { return binop([0xd1, 0xfd], c.v128, a, b) }                         // (Op V128 -> Op V128) -> Op V128
+  mul (a, b) { return binop([0xd5, 0xfd], c.v128, a, b) }                         // (Op V128 -> Op V128) -> Op V128
+  extmul_low_i32x4_s (a, b) { return binop([0xdc, 0xfd], c.v128, a, b) }          // (Op V128 -> Op V128) -> Op V128
+  extmul_high_i32x4_s (a, b) { return binop([0xdd, 0xfd], c.v128, a, b) }         // (Op V128 -> Op V128) -> Op V128
+  extmul_low_i32x4_u (a, b) { return binop([0xde, 0xfd], c.v128, a, b) }          // (Op V128 -> Op V128) -> Op V128
+  extmul_high_i32x4_u (a, b) { return binop([0xdf, 0xfd], c.v128, a, b) }         // (Op V128 -> Op V128) -> Op V128
+}
+
+// type_atom f32x4ops => f32x4ops : V128ops
+class f32x4ops extends type_atom {
+  // Lane operations
+  splat (a) { return new instr_pre1([0x13, 0xfd], c.v128, a) }                    // Op F32 -> Op V128
+  extract_lane (lane, a) { return new instr_pre_imm([0x1f, 0xfd], c.f32, [a], [lane]) }        // (uint8, Op V128) -> Op F32
+  replace_lane (lane, a, v) { return new instr_pre_imm([0x20, 0xfd], c.v128, [a, v], [lane]) } // (uint8, Op V128, Op F32) -> Op V128
+
+  // Comparison
+  eq (a, b) { return binop([0x41, 0xfd], c.v128, a, b) }                          // (Op V128, Op V128) -> Op V128
+  ne (a, b) { return binop([0x42, 0xfd], c.v128, a, b) }                          // (Op V128, Op V128) -> Op V128
+  lt (a, b) { return binop([0x43, 0xfd], c.v128, a, b) }                          // (Op V128, Op V128) -> Op V128
+  gt (a, b) { return binop([0x44, 0xfd], c.v128, a, b) }                          // (Op V128, Op V128) -> Op V128
+  le (a, b) { return binop([0x45, 0xfd], c.v128, a, b) }                          // (Op V128, Op V128) -> Op V128
+  ge (a, b) { return binop([0x46, 0xfd], c.v128, a, b) }                          // (Op V128, Op V128) -> Op V128
+
+  // Numeric
+  demote_f64x2_zero (a) { return unop([0x5e, 0xfd], c.v128, a) }                  // Op V128 -> Op V128
+  ceil (a) { return unop([0x67, 0xfd], c.v128, a) }                               // Op V128 -> Op V128
+  floor (a) { return unop([0x68, 0xfd], c.v128, a) }                              // Op V128 -> Op V128
+  trunc (a) { return unop([0x69, 0xfd], c.v128, a) }                              // Op V128 -> Op V128
+  nearest (a) { return unop([0x6a, 0xfd], c.v128, a) }                            // Op V128 -> Op V128
+  abs (a) { return unop([0xe0, 0xfd], c.v128, a) }                                // Op V128 -> Op V128
+  neg (a) { return unop([0xe1, 0xfd], c.v128, a) }                                // Op V128 -> Op V128
+  sqrt (a) { return unop([0xe3, 0xfd], c.v128, a) }                               // Op V128 -> Op V128
+  add (a, b) { return binop([0xe4, 0xfd], c.v128, a, b) }                         // (Op V128, Op V128) -> Op V128
+  sub (a, b) { return binop([0xe5, 0xfd], c.v128, a, b) }                         // (Op V128, Op V128) -> Op V128
+  mul (a, b) { return binop([0xe6, 0xfd], c.v128, a, b) }                         // (Op V128, Op V128) -> Op V128
+  div (a, b) { return binop([0xe7, 0xfd], c.v128, a, b) }                         // (Op V128, Op V128) -> Op V128
+  min (a, b) { return binop([0xe8, 0xfd], c.v128, a, b) }                         // (Op V128, Op V128) -> Op V128
+  max (a, b) { return binop([0xe9, 0xfd], c.v128, a, b) }                         // (Op V128, Op V128) -> Op V128
+  pmin (a, b) { return binop([0xea, 0xfd], c.v128, a, b) }                        // (Op V128, Op V128) -> Op V128
+  pmax (a, b) { return binop([0xeb, 0xfd], c.v128, a, b) }                        // (Op V128, Op V128) -> Op V128
+  convert_i32x4_s (a) { return unop([0xfa, 0xfd], c.v128, a) }                    // Op V128 -> Op V128
+  convert_i32x4_u (a) { return unop([0xfb, 0xfd], c.v128, a) }                    // Op V128 -> Op V128
+}
+
+// type_atom f64x2ops => f64x2ops : V128ops
+class f64x2ops extends type_atom {
+  // Lane operations
+  splat (a) { return new instr_pre1([0x14, 0xfd], c.v128, a) }                    // Op F64 -> Op V128
+  extract_lane (lane, a) { return new instr_pre_imm([0x21, 0xfd], c.f32, [a], [lane]) }        // (uint8, Op V128) -> Op F64
+  replace_lane (lane, a, v) { return new instr_pre_imm([0x22, 0xfd], c.v128, [a, v], [lane]) } // (uint8, Op V128, Op F64) -> Op V128
+
+  // Comparison
+  eq (a, b) { return binop([0x47, 0xfd], c.v128, a, b) }                          // (Op V128, Op V128) -> Op V128
+  ne (a, b) { return binop([0x48, 0xfd], c.v128, a, b) }                          // (Op V128, Op V128) -> Op V128
+  lt (a, b) { return binop([0x49, 0xfd], c.v128, a, b) }                          // (Op V128, Op V128) -> Op V128
+  gt (a, b) { return binop([0x4a, 0xfd], c.v128, a, b) }                          // (Op V128, Op V128) -> Op V128
+  le (a, b) { return binop([0x4b, 0xfd], c.v128, a, b) }                          // (Op V128, Op V128) -> Op V128
+  ge (a, b) { return binop([0x4c, 0xfd], c.v128, a, b) }                          // (Op V128, Op V128) -> Op V128
+
+  // Numeric
+  promote_low_f32x4 (a) { return unop([0x5f, 0xfd], c.v128, a) }                  // Op V128 -> Op V128
+  ceil (a) { return unop([0x74, 0xfd], c.v128, a) }                               // Op V128 -> Op V128
+  floor (a) { return unop([0x75, 0xfd], c.v128, a) }                              // Op V128 -> Op V128
+  trunc (a) { return unop([0x7a, 0xfd], c.v128, a) }                              // Op V128 -> Op V128
+  nearest (a) { return unop([0x94, 0xfd], c.v128, a) }                            // Op V128 -> Op V128
+  abs (a) { return unop([0xec, 0xfd], c.v128, a) }                                // Op V128 -> Op V128
+  neg (a) { return unop([0xed, 0xfd], c.v128, a) }                                // Op V128 -> Op V128
+  sqrt (a) { return unop([0xef, 0xfd], c.v128, a) }                               // Op V128 -> Op V128
+  add (a, b) { return binop([0xf0, 0xfd], c.v128, a, b) }                         // (Op V128, Op V128) -> Op V128
+  sub (a, b) { return binop([0xf1, 0xfd], c.v128, a, b) }                         // (Op V128, Op V128) -> Op V128
+  mul (a, b) { return binop([0xf2, 0xfd], c.v128, a, b) }                         // (Op V128, Op V128) -> Op V128
+  div (a, b) { return binop([0xf3, 0xfd], c.v128, a, b) }                         // (Op V128, Op V128) -> Op V128
+  min (a, b) { return binop([0xf4, 0xfd], c.v128, a, b) }                         // (Op V128, Op V128) -> Op V128
+  max (a, b) { return binop([0xf5, 0xfd], c.v128, a, b) }                         // (Op V128, Op V128) -> Op V128
+  pmin (a, b) { return binop([0xf6, 0xfd], c.v128, a, b) }                        // (Op V128, Op V128) -> Op V128
+  pmax (a, b) { return binop([0xf7, 0xfd], c.v128, a, b) }                        // (Op V128, Op V128) -> Op V128
+  convert_low_i32x4_s (a) { return unop([0xfe, 0xfd], c.v128, a) }                // Op V128 -> Op V128
+  convert_low_i32x4_u (a) { return unop([0xff, 0xfd], c.v128, a) }                // Op V128 -> Op V128
+}
+
 
 const
   magic = uint32(0x6d736100),
@@ -787,6 +1146,7 @@ const
   c = {
     uint8,
     uint32,
+    biguint64,
     float32,
     float64,
     varuint1,
@@ -810,14 +1170,10 @@ const
     data (buf) { return new bytes_atom(T.data, buf) },  // ArrayLike uint8 -> Data
     str,
     // string -> Str
-    str_ascii: text => {
-      const bytes = [];  // [uint8]
-      for (let i = 0, L = text.length; i < L; ++i)
-        bytes[i] = 0xff & text.charCodeAt(i);
-      return str(bytes)
-    },
-    // string -> Str
-    str_utf8: text => str(new TextEncoder().encode(text)),
+    str_utf8: (() => {
+      const t = new TextEncoder();
+      return text => str(t.encode(text))
+    })(),
 
     // ([Section], Maybe uint32) -> Module
     module (sections, version) {
@@ -1081,10 +1437,22 @@ const
     atomic_wait64: (mi, addr, expect, timeout) => new instr_pre_imm([0x02, 0xfe], c.i32, [ addr, expect, timeout ], mi),
     atomic_fence: new instr_imm1([0x03, 0xfe], Void, varuint1_0),
 
-    i32: new i32ops(-0x01, 0x7f),  // I32ops
-    i64: new i64ops(-0x02, 0x7e),  // I64ops
-    f32: new f32ops(-0x03, 0x7d),  // F32ops
-    f64: new f64ops(-0x04, 0x7c)   // F64ops
+    // Vector const immediate value constructors
+    vari8x16, vari16x8, vari32x4, vari64x2, varf32x4, varf64x2,
+
+    i32: new i32ops(-0x01, 0x7f),   // I32ops
+    i64: new i64ops(-0x02, 0x7e),   // I64ops
+    f32: new f32ops(-0x03, 0x7d),   // F32ops
+    f64: new f64ops(-0x04, 0x7c),   // F64ops
+    v128: new v128ops(-0x05, 0x7b), // V128ops
+
+    // V128shapedOps
+    i8x16: new i8x16ops(-0x05, 0x7b),
+    i16x8: new i16x8ops(-0x05, 0x7b),
+    i32x4: new i32x4ops(-0x05, 0x7b),
+    i64x2: new i64x2ops(-0x05, 0x7b),
+    f32x4: new f32x4ops(-0x05, 0x7b),
+    f64x2: new f64x2ops(-0x05, 0x7b)
   },
 
   // Access helpers
@@ -1319,6 +1687,244 @@ const
     [ 0x0d, "elem.drop" ],
     [ 0x0e, "table.copy" ]
   ]),
+  prefix_fd = new Map([
+    [ 0x00, "v128.load" ],
+    [ 0x01, "v128.load8x8_s" ],
+    [ 0x02, "v128.load8x8_u" ],
+    [ 0x03, "v128.load16x4_s" ],
+    [ 0x04, "v128.load16x4_u" ],
+    [ 0x05, "v128.load32x2_s" ],
+    [ 0x06, "v128.load32x2_u" ],
+    [ 0x07, "v128.load8_splat" ],
+    [ 0x08, "v128.load16_splat" ],
+    [ 0x09, "v128.load32_splat" ],
+    [ 0x0a, "v128.load64_splat" ],
+    [ 0x0b, "v128.store" ],
+    [ 0x0c, "v128.const" ],
+    [ 0x0d, "i8x16.shuffle" ],
+    [ 0x0e, "i8x16.swizzle" ],
+    [ 0x0f, "i8x16.splat" ],
+    [ 0x10, "i16x8.splat" ],
+    [ 0x11, "i32x4.splat" ],
+    [ 0x12, "i64x2.splat" ],
+    [ 0x13, "f32x4.splat" ],
+    [ 0x14, "f64x2.splat" ],
+    [ 0x15, "i8x16.extract_lane_s" ],
+    [ 0x16, "i8x16.extract_lane_u" ],
+    [ 0x17, "i8x16.replace_lane" ],
+    [ 0x18, "i16x8.extract_lane_s" ],
+    [ 0x19, "i16x8.extract_lane_u" ],
+    [ 0x1a, "i16x8.replace_lane" ],
+    [ 0x1b, "i32x4.extract_lane" ],
+    [ 0x1c, "i32x4.replace_lane" ],
+    [ 0x1d, "i64x2.extract_lane" ],
+    [ 0x1e, "i64x2.replace_lane" ],
+    [ 0x1f, "f32x4.extract_lane" ],
+    [ 0x20, "f32x4.replace_lane" ],
+    [ 0x21, "f64x2.extract_lane" ],
+    [ 0x22, "f64x2.replace_lane" ],
+    [ 0x23, "i8x16.eq" ],
+    [ 0x24, "i8x16.ne" ],
+    [ 0x25, "i8x16.lt_s" ],
+    [ 0x26, "i8x16.lt_u" ],
+    [ 0x27, "i8x16.gt_s" ],
+    [ 0x28, "i8x16.gt_u" ],
+    [ 0x29, "i8x16.le_s" ],
+    [ 0x2a, "i8x16.le_u" ],
+    [ 0x2b, "i8x16.ge_s" ],
+    [ 0x2c, "i8x16.ge_u" ],
+    [ 0x2d, "i16x8.eq" ],
+    [ 0x2e, "i16x8.ne" ],
+    [ 0x2f, "i16x8.lt_s" ],
+    [ 0x30, "i16x8.lt_u" ],
+    [ 0x31, "i16x8.gt_s" ],
+    [ 0x32, "i16x8.gt_u" ],
+    [ 0x33, "i16x8.le_s" ],
+    [ 0x34, "i16x8.le_u" ],
+    [ 0x35, "i16x8.ge_s" ],
+    [ 0x36, "i16x8.ge_u" ],
+    [ 0x37, "i32x4.eq" ],
+    [ 0x38, "i32x4.ne" ],
+    [ 0x39, "i32x4.lt_s" ],
+    [ 0x3a, "i32x4.lt_u" ],
+    [ 0x3b, "i32x4.gt_s" ],
+    [ 0x3c, "i32x4.gt_u" ],
+    [ 0x3d, "i32x4.le_s" ],
+    [ 0x3e, "i32x4.le_u" ],
+    [ 0x3f, "i32x4.ge_s" ],
+    [ 0x40, "i32x4.ge_u" ],
+    [ 0x41, "f32x4.eq" ],
+    [ 0x42, "f32x4.ne" ],
+    [ 0x43, "f32x4.lt" ],
+    [ 0x44, "f32x4.gt" ],
+    [ 0x45, "f32x4.le" ],
+    [ 0x46, "f32x4.ge" ],
+    [ 0x47, "f64x2.eq" ],
+    [ 0x48, "f64x2.ne" ],
+    [ 0x49, "f64x2.lt" ],
+    [ 0x4a, "f64x2.gt" ],
+    [ 0x4b, "f64x2.le" ],
+    [ 0x4c, "f64x2.ge" ],
+    [ 0x4d, "v128.not" ],
+    [ 0x4e, "v128.and" ],
+    [ 0x4f, "v128.andnot" ],
+    [ 0x50, "v128.or" ],
+    [ 0x51, "v128.xor" ],
+    [ 0x52, "v128.bitselect" ],
+    [ 0x53, "v128.any_true" ],
+    [ 0x54, "v128.load8_lane" ],
+    [ 0x55, "v128.load16_lane" ],
+    [ 0x56, "v128.load32_lane" ],
+    [ 0x57, "v128.load64_lane" ],
+    [ 0x58, "v128.store8_lane" ],
+    [ 0x59, "v128.store16_lane" ],
+    [ 0x5a, "v128.store32_lane" ],
+    [ 0x5b, "v128.store64_lane" ],
+    [ 0x5c, "v128.load32_zero" ],
+    [ 0x5d, "v128.load64_zero" ],
+    [ 0x5e, "f32x4.demote_f64x2_zero" ],
+    [ 0x5f, "f64x2.promote_low_f32x4" ],
+    [ 0x60, "i8x16.abs" ],
+    [ 0x61, "i8x16.neg" ],
+    [ 0x62, "i8x16.popcnt" ],
+    [ 0x63, "i8x16.all_true" ],
+    [ 0x64, "i8x16.bitmask" ],
+    [ 0x65, "i8x16.narrow_i16x8_s" ],
+    [ 0x66, "i8x16.narrow_i16x8_u" ],
+    [ 0x67, "f32x4.ceil" ],
+    [ 0x68, "f32x4.floor" ],
+    [ 0x69, "f32x4.trunc" ],
+    [ 0x6a, "f32x4.nearest" ],
+    [ 0x6b, "i8x16.shl" ],
+    [ 0x6c, "i8x16.shr_s" ],
+    [ 0x6d, "i8x16.shr_u" ],
+    [ 0x6e, "i8x16.add" ],
+    [ 0x6f, "i8x16.add_sat_s" ],
+    [ 0x70, "i8x16.add_sat_u" ],
+    [ 0x71, "i8x16.sub" ],
+    [ 0x72, "i8x16.sub_sat_s" ],
+    [ 0x73, "i8x16.sub_sat_u" ],
+    [ 0x74, "f64x2.ceil" ],
+    [ 0x75, "f64x2.floor" ],
+    [ 0x76, "i8x16.min_s" ],
+    [ 0x77, "i8x16.min_u" ],
+    [ 0x78, "i8x16.max_s" ],
+    [ 0x79, "i8x16.max_u" ],
+    [ 0x7a, "f64x2.trunc" ],
+    [ 0x7b, "i8x16.avgr_u" ],
+    [ 0x7c, "i16x8.extadd_pairwise_i8x16_s" ],
+    [ 0x7d, "i16x8.extadd_pairwise_i8x16_u" ],
+    [ 0x7e, "i32x4.extadd_pairwise_i16x8_s" ],
+    [ 0x7f, "i32x4.extadd_pairwise_i16x8_u" ],
+    [ 0x80, "i16x8.abs" ],
+    [ 0x81, "i16x8.neg" ],
+    [ 0x82, "i16x8.q15mulr_sat_s" ],
+    [ 0x83, "i16x8.all_true" ],
+    [ 0x84, "i16x8.bitmask" ],
+    [ 0x85, "i16x8.narrow_i32x4_s" ],
+    [ 0x86, "i16x8.narrow_i32x4_u" ],
+    [ 0x87, "i16x8.extend_low_i8x16_s" ],
+    [ 0x88, "i16x8.extend_high_i8x16_s" ],
+    [ 0x89, "i16x8.extend_low_i8x16_u" ],
+    [ 0x8a, "i16x8.extend_high_i8x16_u" ],
+    [ 0x8b, "i16x8.shl" ],
+    [ 0x8c, "i16x8.shr_s" ],
+    [ 0x8d, "i16x8.shr_u" ],
+    [ 0x8e, "i16x8.add" ],
+    [ 0x8f, "i16x8.add_sat_s" ],
+    [ 0x90, "i16x8.add_sat_u" ],
+    [ 0x91, "i16x8.sub" ],
+    [ 0x92, "i16x8.sub_sat_s" ],
+    [ 0x93, "i16x8.sub_sat_u" ],
+    [ 0x94, "f64x2.nearest" ],
+    [ 0x95, "i16x8.mul" ],
+    [ 0x96, "i16x8.min_s" ],
+    [ 0x97, "i16x8.min_u" ],
+    [ 0x98, "i16x8.max_s" ],
+    [ 0x99, "i16x8.max_u" ],
+    [ 0x9b, "i16x8.avgr_u" ],
+    [ 0x9c, "i16x8.extmul_low_i8x16_s" ],
+    [ 0x9d, "i16x8.extmul_high_i8x16_s" ],
+    [ 0x9e, "i16x8.extmul_low_i8x16_u" ],
+    [ 0x9f, "i16x8.extmul_high_i8x16_u" ],
+    [ 0xa0, "i32x4.abs" ],
+    [ 0xa1, "i32x4.neg" ],
+    [ 0xa2, "i32x4.all_true" ],
+    [ 0xa4, "i32x4.bitmask" ],
+    [ 0xa7, "i32x4.extend_low_i16x8_s" ],
+    [ 0xa8, "i32x4.extend_high_i16x8_s" ],
+    [ 0xa9, "i32x4.extend_low_i16x8_u" ],
+    [ 0xaa, "i32x4.extend_high_i16x8_u" ],
+    [ 0xab, "i32x4.shl" ],
+    [ 0xac, "i32x4.shr_s" ],
+    [ 0xad, "i32x4.shr_u" ],
+    [ 0xae, "i32x4.add" ],
+    [ 0xb1, "i32x4.sub" ],
+    [ 0xb5, "i32x4.mul" ],
+    [ 0xb6, "i32x4.min_s" ],
+    [ 0xb7, "i32x4.min_u" ],
+    [ 0xb8, "i32x4.max_s" ],
+    [ 0xb9, "i32x4.max_u" ],
+    [ 0xba, "i32x4.dot_i16x8_s" ],
+    [ 0xbc, "i32x4.extmul_low_i16x8_s" ],
+    [ 0xbd, "i32x4.extmul_high_i16x8_s" ],
+    [ 0xbe, "i32x4.extmul_low_i16x8_u" ],
+    [ 0xbf, "i32x4.extmul_high_i16x8_u" ],
+    [ 0xc0, "i64x2.abs" ],
+    [ 0xc1, "i64x2.neg" ],
+    [ 0xc3, "i64x2.all_true" ],
+    [ 0xc4, "i64x2.bitmask" ],
+    [ 0xc7, "i64x2.extend_low_i32x4_s" ],
+    [ 0xc8, "i64x2.extend_high_i32x4_s" ],
+    [ 0xc9, "i64x2.extend_low_i32x4_u" ],
+    [ 0xca, "i64x2.extend_high_i32x4_u" ],
+    [ 0xcb, "i64x2.shl" ],
+    [ 0xcc, "i64x2.shr_s" ],
+    [ 0xcd, "i64x2.shr_u" ],
+    [ 0xce, "i64x2.add" ],
+    [ 0xd1, "i64x2.sub" ],
+    [ 0xd5, "i64x2.mul" ],
+    [ 0xd6, "i64x2.eq" ],
+    [ 0xd7, "i64x2.ne" ],
+    [ 0xd8, "i64x2.lt_s" ],
+    [ 0xd9, "i64x2.gt_s" ],
+    [ 0xda, "i64x2.le_s" ],
+    [ 0xdb, "i64x2.ge_s" ],
+    [ 0xdc, "i64x2.extmul_low_i32x4_s" ],
+    [ 0xdd, "i64x2.extmul_high_i32x4_s" ],
+    [ 0xde, "i64x2.extmul_low_i32x4_u" ],
+    [ 0xdf, "i64x2.extmul_high_i32x4_u" ],
+    [ 0xe0, "f32x4.abs" ],
+    [ 0xe1, "f32x4.neg" ],
+    [ 0xe3, "f32x4.sqrt" ],
+    [ 0xe4, "f32x4.add" ],
+    [ 0xe5, "f32x4.sub" ],
+    [ 0xe6, "f32x4.mul" ],
+    [ 0xe7, "f32x4.div" ],
+    [ 0xe8, "f32x4.min" ],
+    [ 0xe9, "f32x4.max" ],
+    [ 0xea, "f32x4.pmin" ],
+    [ 0xeb, "f32x4.pmax" ],
+    [ 0xec, "f64x2.abs" ],
+    [ 0xed, "f64x2.neg" ],
+    [ 0xef, "f64x2.sqrt" ],
+    [ 0xf0, "f64x2.add" ],
+    [ 0xf1, "f64x2.sub" ],
+    [ 0xf2, "f64x2.mul" ],
+    [ 0xf3, "f64x2.div" ],
+    [ 0xf4, "f64x2.min" ],
+    [ 0xf5, "f64x2.max" ],
+    [ 0xf6, "f64x2.pmin" ],
+    [ 0xf7, "f64x2.pmax" ],
+    [ 0xf8, "i32x4.trunc_sat_f32x4_s" ],
+    [ 0xf9, "i32x4.trunc_sat_f32x4_u" ],
+    [ 0xfa, "f32x4.convert_i32x4_s" ],
+    [ 0xfb, "f32x4.convert_i32x4_u" ],
+    [ 0xfc, "i32x4.trunc_sat_f64x2_s_zero" ],
+    [ 0xfd, "i32x4.trunc_sat_f64x2_u_zero" ],
+    [ 0xfe, "f64x2.convert_low_i32x4_s" ],
+    [ 0xff, "f64x2.convert_low_i32x4_u" ]
+  ]),
   prefix_fe = new Map([
     [ 0x00, "memory.atomic.notify" ],
     [ 0x01, "memory.atomic.wait32" ],
@@ -1392,9 +1998,6 @@ const
 
 // Linear bytecode textual representation
 
-const opnames = new Map();  // string :=> uint8
-opcodes.forEach((...kv) => opnames.set(...kv));
-
 // N -> string
 function fmtimm (n) {
   switch (n.t) {
@@ -1407,13 +2010,15 @@ function fmtimm (n) {
     case t.varint32:
     case t.varint64:
     case t.float32:
-    case t.float64: return n.v.toString(10)
+    case t.float64:
+    case t.vec128: return n.v.toString(10)
     case t.varint7: return readVarInt7(n.v).toString(10)
     case t.type: switch (n.v) {
       case -1:    return 'i32'
       case -2:    return 'i64'
       case -3:    return 'f32'
       case -4:    return 'f64'
+      case -5:    return 'v128'
       case -0x10: return 'extern'
       case -0x20: return 'func'
       case -0x40: return 'void'
@@ -1427,6 +2032,7 @@ function getOpcode (p, v) {
   switch (p) {
     case undefined: return opcodes.get(v);
     case 0xfc: return prefix_fc.get(v);
+    case 0xfd: return prefix_fd.get(v);
     case 0xfe: return prefix_fe.get(v)
   }
 }
@@ -1459,7 +2065,7 @@ function visitOp (n, c, depth) {
       c.writeln(depth, getOpcode(n.p, n.v) + fmtimmv(n.imm));
       visitOps(n.post, c, depth + 1); break;
     default: console.error("Unexpected op " + n.t.toString(),
-      n.v.reduce((s, b) => s + b.toString(16).padStart(2, "0"), "0x"))
+      n.v.reduce?.((s, b) => s + b.toString(16).padStart(2, "0"), "0x") ?? n.v)
   }
 }
 // ([N], Writer) -> Writer string

@@ -101,7 +101,8 @@ class Concurrent {
 const simList = (() => {
 
   const {
-    uint8, uint32, float32, float64, varuint1, varuint7, varuint32, varint7, varint32, varint64,
+    uint8, uint32, biguint64, float32, float64, varuint1, varuint7, varuint32, varint7, varint32, varint64,
+    vari8x16, vari16x8, vari32x4, vari64x2, varf32x4, varf64x2,
     func, void_, heap, ref, ref_null, external_kind, data, str, str_ascii, str_utf8, module,
     custom_section, type_section, import_section, function_section, table_section, memory_section,
     global_section, export_section, start_section, element_section, code_section, data_section, datacount_section,
@@ -113,7 +114,7 @@ const simList = (() => {
     current_memory, grow_memory, init_memory, drop_data, copy_memory, fill_memory, init_table, drop_elem, copy_table,
     set_table, get_table, null_ref, is_null_ref, func_ref, eq_ref, as_non_null_ref,
     atomic_notify, atomic_wait32, atomic_wait64, atomic_fence,
-    align8, align16, align32, align64, i32, i64, f32, f64
+    align8, align16, align32, align64, i32, i64, f32, f64, v128, i8x16, i16x8, i32x4, i64x2, f32x4, f64x2
   } = c;
 
   return [
@@ -128,7 +129,7 @@ const simList = (() => {
         ]),
         export_section([
           // Export "fact" as function at index 0
-          export_entry(str_ascii("fact"), external_kind.function, varuint32(0))
+          export_entry(str_utf8("fact"), external_kind.function, varuint32(0))
         ]),
         code_section([
           // Body of function at index 0
@@ -167,11 +168,8 @@ const simList = (() => {
         function_section([
           varuint32(0)
         ]),
-        memory_section([
-          resizable_limits(1, 1)
-        ]),
         export_section([
-          export_entry(str_ascii("store"), external_kind.function, varuint32(0))
+          export_entry(str_utf8("store"), external_kind.function, varuint32(0))
         ]),
         code_section([
           function_body([], [
@@ -215,7 +213,7 @@ const simList = (() => {
           varuint32(0)
         ]),
         export_section([
-          export_entry(str_ascii("sat"), external_kind.function, varuint32(0))
+          export_entry(str_utf8("sat"), external_kind.function, varuint32(0))
         ]),
         code_section([
           function_body([], [
@@ -240,7 +238,7 @@ const simList = (() => {
           varuint32(0)
         ]),
         export_section([
-          export_entry(str_ascii("sext"), external_kind.function, varuint32(0))
+          export_entry(str_utf8("sext"), external_kind.function, varuint32(0))
         ]),
         code_section([
           function_body([], [
@@ -271,11 +269,8 @@ const simList = (() => {
         function_section([
           varuint32(0)
         ]),
-        memory_section([
-          resizable_limits(1, 1)
-        ]),
         export_section([
-          export_entry(str_ascii("bulk"), external_kind.function, varuint32(0))
+          export_entry(str_utf8("bulk"), external_kind.function, varuint32(0))
         ]),
         datacount_section(
           varuint32(1)
@@ -291,7 +286,7 @@ const simList = (() => {
           ])
         ]),
         data_section([
-          passive_data_segment(str_ascii("ABCDEFGH"))
+          passive_data_segment(str_utf8("ABCDEFGH"))
         ])
       ]),
       async runner () {
@@ -311,8 +306,8 @@ const simList = (() => {
         ]),
         import_section([
           function_import_entry(
-            str_ascii("js"),
-            str_ascii("run"),
+            str_utf8("js"),
+            str_utf8("run"),
             varuint32(0)
           )
         ]),
@@ -324,8 +319,8 @@ const simList = (() => {
           table_type(heap.Extern, resizable_limits(1)),
         ]),
         export_section([
-          export_entry(str_ascii("set_externref"), external_kind.function, varuint32(1)),
-          export_entry(str_ascii("run_from_table"), external_kind.function, varuint32(2))
+          export_entry(str_utf8("set_externref"), external_kind.function, varuint32(1)),
+          export_entry(str_utf8("run_from_table"), external_kind.function, varuint32(2))
         ]),
         code_section([
           function_body([], [
@@ -354,7 +349,7 @@ const simList = (() => {
           varuint32(0)
         ]),
         export_section([
-          export_entry(str_ascii("multi_block"), external_kind.function, varuint32(0))
+          export_entry(str_utf8("multi_block"), external_kind.function, varuint32(0))
         ]),
         code_section([
           function_body([], [
@@ -392,8 +387,8 @@ const simList = (() => {
           varuint32(1)
         ]),
         export_section([
-          export_entry(str_ascii("notify_all"), external_kind.function, varuint32(0)),
-          export_entry(str_ascii("run_atomic"), external_kind.function, varuint32(1))
+          export_entry(str_utf8("notify_all"), external_kind.function, varuint32(0)),
+          export_entry(str_utf8("run_atomic"), external_kind.function, varuint32(1))
         ]),
         code_section([
           function_body([], [
@@ -447,6 +442,60 @@ const simList = (() => {
       },
       teardown () { new Int32Array(this.imports.js.mem.buffer).subarray(0, 3).fill(0) },
       importsObj: { js: { mem: new WebAssembly.Memory({ initial: 1, maximum: 1, shared: true }) } }
+    }),
+
+    new WasmSim({
+      module: module([
+        type_section([
+          comp_type(func, [], [])
+        ]),
+        import_section([
+          memory_import_entry(
+            str_utf8("js"),
+            str_utf8("mem"),
+            resizable_limits(1, 1)
+          )
+        ]),
+        function_section([
+          varuint32(0)
+        ]),
+        export_section([
+          export_entry(str_utf8("simd"), external_kind.function, varuint32(0))
+        ]),
+        code_section([
+          function_body([], [
+            v128.store(align32,
+              i32.const(16),
+              // f64x2.promote_low_f32x4(
+              //   v128.load(align64, i32.const(0)),
+              //   // v128.load(align64, i32.const(16)),
+              // )
+              // // i64x2.splat(i64.load(align32, i32.const(16)))
+              i8x16.narrow_i16x8_u(
+                v128.load(align64, i32.const(0)),
+                v128.load(align64, i32.const(16)),
+              )
+            )
+          ])
+        ])
+      ]),
+      async runner () {
+        const { instance } = await this.makeInstance();
+        // new Uint8Array(this.imports.js.mem.buffer).set(Array(32).fill(0).map((_, i) => i))
+        new Uint16Array(this.imports.js.mem.buffer).set(Array(16).fill(0).map((_, i) => i))
+        // new Uint32Array(this.imports.js.mem.buffer).set(Array(8).fill(0).map((_, i) => i))
+        // new BigUint64Array(this.imports.js.mem.buffer).set(Array(4).fill(0).map((_, i) => BigInt(i)))
+        // new Float32Array(this.imports.js.mem.buffer).set(Array(8).fill(0).map((_, i) => i + .3))
+        // new Float64Array(this.imports.js.mem.buffer).set(Array(4).fill(0).map((_, i) => i + .3))
+        this.console.log("Wasm simd test:",
+          // Array.from(new BigUint64Array(this.imports.js.mem.buffer.slice(0, 32))).map(n => Number(n)),
+          Array.from(new Uint8Array(this.imports.js.mem.buffer.slice(0, 32))),
+          instance.exports.simd(),
+          // Array.from(new BigUint64Array(this.imports.js.mem.buffer.slice(0, 32))).map(n => Number(n))
+          Array.from(new Uint8Array(this.imports.js.mem.buffer.slice(0, 32)))
+        );
+      },
+      importsObj: { js: { mem: new WebAssembly.Memory({ initial: 1, maximum: 1 }) } }
     })
     
   ]

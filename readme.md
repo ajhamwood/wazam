@@ -11,7 +11,7 @@ Adapted from Rasmus Andersson's [WASM-Util](https://github.com/rsms/wasm-util), 
   - [x] (FF78) Multi-value
   - [x] (FF79) Reference types
   - [x] (FF79) Threads and atomics
-  - [ ] (FF89) Fixed width SIMD
+  - [x] (FF89) Fixed width SIMD
   - [ ] (FF100) Legacy exception handling
   - [ ] (FF112) Extended constant expressions
   - [ ] (FF120) Garbage collection
