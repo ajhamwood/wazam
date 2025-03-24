@@ -1130,8 +1130,8 @@ const
   latestVersion = uint32(0x1),
   end = new instr_atom(0x0b, Void),  // Op Void
   elseOp = new instr_atom(0x05, Void),  // Op Void
-  catchAllOp = new instr_atom(0x19, Void),  // Op Void
   delegateOp = new instr_atom(0x18, Void),  // Op Void
+  catchAllOp = new instr_atom(0x19, Void),  // Op Void
 
 // AnyResult R => (R, Op I32, [AnyOp], Maybe [AnyOp]) -> Op R
   if_ = (mbResult, cond, then_, else_) => {
@@ -1200,7 +1200,7 @@ const
     table_section: types => section(sect_id_table, varint32(types.length), types),
     // [ResizableLimits] -> MemorySection
     memory_section: limits => section(sect_id_memory, varuint32(limits.length), limits),
-    // [GlobalVairable] -> GlobalSection
+    // [GlobalVariable] -> GlobalSection
     global_section: globals => section(sect_id_global, varuint32(globals.length), globals),
     // [ExportEntry] -> ExportSection
     export_section: exports => section(sect_id_export, varuint32(exports.length), exports),
@@ -1456,12 +1456,12 @@ const
 
     // Exceptions
     // AnyResult R => (R, [AnyOp], [CatchClause], [AnyOp]) -> Op R
-    try_catch: (mbResult, body, catchClauses, catchAllClause = []) => {
+    try_catch: (mbResult, body, catchClauses, catchAllClause) => {
       assert(mbResult.t === T.varuint32 || mbResult === body.at(-1).r,
         "mbResult", mbResult, "!== body.at(-1).r", body.at(-1).r);
       assert(catchClauses.every(c => c.v === 0x07), "catchClauses", catchClauses, ".some c: c.v !== 0x07");
-      return new instr_imm1_post([0x06], mbResult, [ ...body,
-        ...catchClauses, catchAllOp, ...catchAllClause, end ]) },
+      return new instr_imm1_post([0x06], mbResult, catchAllClause ? [ ...body,
+        ...catchClauses, catchAllOp, ...catchAllClause, end ] : [ ...body, ...catchClauses, end ]) },
     // (VarUint32, [AnyOp]) -> CatchClause
     catch_clause: (tagIndex, body) => new instr_imm1_post([0x07], tagIndex, body),
     // AnyResult R => (R, [AnyOp], VarUint32) -> Op R
@@ -1537,8 +1537,9 @@ const
     [ 0xf, "return" ],
     [ 0x10, "call" ],
     [ 0x11, "call_indirect" ],
-    [ 0x12, "delegate" ],
-    [ 0x13, "catch_all" ],
+    [ 0x14, "call_ref" ],
+    [ 0x18, "delegate" ],
+    [ 0x19, "catch_all" ],
     [ 0x1a, "drop" ],
     [ 0x1b, "select" ],
     [ 0x20, "local.get" ],
@@ -1709,7 +1710,9 @@ const
     [ 0xd1, "ref.is_null" ],
     [ 0xd2, "ref.func" ],
     [ 0xd3, "ref.eq" ],
-    [ 0xd4, "ref.as_non_null" ]
+    [ 0xd4, "ref.as_non_null" ],
+    [ 0xd5, "ref.br_on_null" ],
+    [ 0xd6, "ref.br_on_non_null" ],
   ]),
   prefix_fc = new Map([
     [ 0x00, "i32.trunc_sat_f32_s" ],

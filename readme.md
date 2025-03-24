@@ -15,7 +15,8 @@ WebAssembly extensions
   - [x] (FF79) Threads and atomics
   - [x] (FF89) Fixed width SIMD
   - [x] (FF100) Legacy exception handling
-  - [ ] (FF112) Extended constant expressions
+  - [x] (FF112) Extended constant expressions
+  - [ ] (FF120) Typed function references
   - [ ] (FF120) Garbage collection
   - [ ] (FF121) Tail calls
   - [ ] (FF125) Multi-memory
@@ -25,7 +26,7 @@ WebAssembly extensions
 
 Wazam features
 
-  - [ ] WAST to WASM (base on WASM-Util)
+  - [ ] WAST ↔ WASM (base on WASM-Util)
   - [ ] Design & implement my own scripting language
 
 Other

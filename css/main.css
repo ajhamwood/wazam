@@ -5,14 +5,8 @@
   font-style: normal;
   font-display: swap }
 @font-face {
-  font-family: Mercury;
-  src: url('../fonts/MercuryDisplay-Roman.woff2') format('woff2');
-  font-weight: normal;
-  font-style: normal;
-  font-display: swap }
-@font-face {
-  font-family: CaskaydiaCove;
-  src: url('../fonts/CaskaydiaCoveNerdFontComplete-Regular.woff2') format('woff2');
+  font-family: Aloha;
+  src: url('../fonts/AlohaBetaVAR-Regular.woff2') format('woff2');
   font-weight: normal;
   font-style: normal;
   font-display: swap }
@@ -22,7 +16,7 @@
 html, body {
   margin: 0;
   padding: 0;
-  font-family: Mercury }
+  font-family: Aloha }
 body {
   background-color: black;
   color: #ddd }

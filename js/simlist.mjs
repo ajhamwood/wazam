@@ -561,13 +561,51 @@ const simList = (() => {
         ])
       ]),
       async runner () {
-        const { instance } = await this.makeInstance(), self = this;
+        const { instance } = await this.makeInstance();
         let res;
         try { res = instance.exports.throw_leg(5) }
         catch (e) { if (e.is(this.imports.js.exn)) this.console.error(this.imports.js.exn, 1, e) }
         this.console.log("Wasm legacy exceptions test:", res)
       },
       importsObj: { js: { exn: new WebAssembly.Tag({ parameters: [ "i32" ] }) } }
+    }),
+
+    new WasmSim({
+      module: module([
+        type_section([
+          comp_type(func, [], [ i32 ])
+        ]),
+        import_section([
+          global_import_entry(str_utf8("js"), str_utf8("global0"), global_type(i32))
+        ]),
+        function_section([
+          varuint32(0)
+        ]),
+        global_section([
+          global_variable(
+            global_type(i32),
+            init_expr([
+              i32.add(
+                get_global(i32, 0),
+                i32.const(1)
+              )
+            ])
+          )
+        ]),
+        export_section([
+          export_entry(str_utf8("next"), external_kind.function, varuint32(0))
+        ]),
+        code_section([
+          function_body([], [
+            get_global(i32, 1)
+          ])
+        ])
+      ]),
+      async runner () {
+        const { instance } = await this.makeInstance();
+        this.console.log("Wasm legacy exceptions test:", instance.exports.next())
+      },
+      importsObj: { js: { global0: new WebAssembly.Global({ value: "i32" }, 1) } }
     })
     
   ]

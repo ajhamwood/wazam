@@ -14,7 +14,7 @@
     <h1>Building WebAssembly directly in the browser</h1>
   </header>
   <main>
-    <nav class="unicode">
+    <nav>
       <button id="first" class="unicode">⏫</button>
       <button id="prev" class="unicode">⏶</button>
       <button id="next" class="unicode">⏷</button>
@@ -76,6 +76,12 @@
         <a href="https://github.com/WebAssembly/exception-handling/blob/main/proposals/exception-handling/legacy/Exceptions.md">Proposal</a>
       </p>
     </wasm-sim>
+    <wasm-sim id="ext_const">
+      <h1 slot="title">Extended constant expressions</h1>
+      <p>
+        <a href="https://github.com/WebAssembly/exception-handling/blob/main/proposals/exception-handling/legacy/Exceptions.md">Proposal</a>
+      </p>
+    </wasm-sim>
   </main>
   <template id="wasm-sim">
     <style>
@@ -85,7 +91,7 @@ button {
   align-items: center;
   justify-content: center;
   gap: .2em;
-  font-family: Mercury }
+  font-family: Aloha }
 .unicode { font-family: "STIX Two Math" }
 article {
   container-type: size;
@@ -94,8 +100,9 @@ article {
   grid-template-columns: repeat(2, 1fr);
   grid-template-rows: min-content 10lvh auto max(20lvh, 4em) max(5lvh, 2em) 10lvh }
   .article-title, .article-copy, .console, .controls { grid-column: span 2 }
+  .article-copy { overflow-y: scroll }
   .text-repr, .buffer-repr, .console {
-    font-family: CaskaydiaCove, monospace;
+    font-family: Aloha, monospace;
     margin: 1rem;
     background-color: #fff3;
     padding: .3rem;
@@ -104,7 +111,7 @@ article {
     white-space: pre }
   .buffer-repr {
     margin-left: 0;
-    font-size: min(1em, calc(1.7 / 23 * (50cqw - 1.6rem - .5px))) }
+    font-size: min(1em, calc(1.54 / 23 * (50cqw - 1.6rem - .5px))) }
   .console {
     margin: 0 1rem 1rem;
     white-space: pre-wrap }
