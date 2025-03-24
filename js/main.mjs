@@ -11,7 +11,8 @@ const sims = {};
   sims.bulk_table,
   sims.multi_val,
   sims.atomics,
-  sims.simd
+  sims.simd,
+  sims.exn_legacy
 ] = simList);
 self.app = new $.Machine({ inView: 0, simList });
 

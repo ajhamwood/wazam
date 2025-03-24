@@ -42,13 +42,19 @@ class WasmSim {
   get imports () { return this.#importsObj }
   set imports (_) {}
 
+  findImport (im) {
+    for (const [module, mObj] of Object.entries(this.#importsObj))
+      for (const [field, fVal] of Object.entries(mObj))
+        if (fVal === im) return module + "." + field
+  }
+
   connect (el) { this.#component = el }
 
   console = (() => {
     const self = this;
     return {
       log (...params) {
-        self.#log.push(params);
+        self.#log.push({ logLevel: 2, params });
         self.#component.consoleElement.innerText += params.map(JSON.stringify).join(" ") + "\n";
         self.#component.consoleElement.scrollTo(0, 32768);
         console.log("@sim", self.#name, "—", ...params)
@@ -56,6 +62,15 @@ class WasmSim {
       clear () {
         self.#log = [];
         self.#component.consoleElement.innerText = ""
+      },
+      error (tag, arity, e) {
+        const exnArgs = [];
+        for (let i = 0; i < arity; i++) exnArgs.push(e.getArg(tag, i));
+        self.#log.push({ logLevel: 4, params: [ e, ...exnArgs ] });
+        const displayedErr = [ "WASM: user defined exception", self.findImport(tag), ":", ...exnArgs ];
+        self.#component.consoleElement.innerText += displayedErr.map(JSON.stringify).join(" ") + "\n";
+        self.#component.consoleElement.scrollTo(0, 32768);
+        console.error(...displayedErr)
       }
     }
   })()
@@ -105,15 +120,15 @@ const simList = (() => {
     vari8x16, vari16x8, vari32x4, vari64x2, varf32x4, varf64x2,
     func, void_, heap, ref, ref_null, external_kind, data, str, str_ascii, str_utf8, module,
     custom_section, type_section, import_section, function_section, table_section, memory_section,
-    global_section, export_section, start_section, element_section, code_section, data_section, datacount_section,
-    function_import_entry, table_import_entry, memory_import_entry, global_import_entry, export_entry,
+    global_section, export_section, start_section, element_section, code_section, data_section, datacount_section, tag_section,
+    function_import_entry, table_import_entry, memory_import_entry, global_import_entry, tag_import_entry, export_entry,
     active_elem_segment, passive_elem_segment, declarative_elem_segment, active_data_segment, passive_data_segment,
-    comp_type, func_type, table_type, global_type, resizable_limits, global_variable, init_expr, elem_expr_func, elem_expr_null, function_body, local_entry,
+    comp_type, func_type, table_type, global_type, tag_type, resizable_limits, global_variable, init_expr, elem_expr_func, elem_expr_null, function_body, local_entry,
     unreachable, nop, block, void_block, loop, void_loop, if_, void_if, end, br, br_if, br_table,
-    return_, return_void, return_multi, call, call_indirect, drop, select, get_local, set_local, tee_local, get_global, set_global,
-    current_memory, grow_memory, init_memory, drop_data, copy_memory, fill_memory, init_table, drop_elem, copy_table,
-    set_table, get_table, null_ref, is_null_ref, func_ref, eq_ref, as_non_null_ref,
-    atomic_notify, atomic_wait32, atomic_wait64, atomic_fence,
+    try_catch, catch_clause, try_delegate, throw_, rethrow, return_, return_void, return_multi, call, call_indirect, drop, select,
+    get_local, set_local, tee_local, get_global, set_global,
+    current_memory, grow_memory, init_memory, drop_data, copy_memory, fill_memory, init_table, drop_elem, copy_table, set_table, get_table,
+    null_ref, is_null_ref, func_ref, eq_ref, as_non_null_ref, atomic_notify, atomic_wait32, atomic_wait64, atomic_fence,
     align8, align16, align32, align64, i32, i64, f32, f64, v128, i8x16, i16x8, i32x4, i64x2, f32x4, f64x2
   } = c;
 
@@ -496,6 +511,63 @@ const simList = (() => {
         );
       },
       importsObj: { js: { mem: new WebAssembly.Memory({ initial: 1, maximum: 1 }) } }
+    }),
+
+    new WasmSim({
+      module: module([
+        type_section([
+          comp_type(func, [ i32 ], [ i32 ]),
+          comp_type(func, [ i32 ], [])
+        ]),
+        import_section([
+          tag_import_entry(str_utf8("js"), str_utf8("exn"), tag_type(varuint32(1)))
+        ]),
+        function_section([
+          varuint32(0)
+        ]),
+        tag_section([
+          tag_type(varuint32(1))
+        ]),
+        export_section([
+          export_entry(str_utf8("throw_leg"), external_kind.function, varuint32(0))
+        ]),
+        code_section([
+          function_body([], [
+            try_catch(void_, [
+              if_(void_,
+                i32.rem_u(
+                  get_local(i32, 0),
+                  i32.const(2)
+                ),
+                [
+                  throw_(varuint32(0), [
+                    i32.div_u(
+                      get_local(i32, 0),
+                      i32.const(2)
+                    )
+                  ])
+                ]
+              )
+            ], [
+              catch_clause(varuint32(0),[
+                rethrow(varuint32(0))
+              ])
+            ]),
+            i32.div_u(
+              get_local(i32, 0),
+              i32.const(2)
+            )
+          ])
+        ])
+      ]),
+      async runner () {
+        const { instance } = await this.makeInstance(), self = this;
+        let res;
+        try { res = instance.exports.throw_leg(5) }
+        catch (e) { if (e.is(this.imports.js.exn)) this.console.error(this.imports.js.exn, 1, e) }
+        this.console.log("Wasm legacy exceptions test:", res)
+      },
+      importsObj: { js: { exn: new WebAssembly.Tag({ parameters: [ "i32" ] }) } }
     })
     
   ]

@@ -87,6 +87,7 @@ const T = {
   table_type:       Symbol('table_type'),
   memory_type:      Symbol('memory_type'),
   global_type:      Symbol('global_type'),
+  tag_type:         Symbol("tag_type"),
   resizable_limits: Symbol('resizable_limits'),
   global_variable:  Symbol('global_variable'),
   init_expr:        Symbol('init_expr'),
@@ -440,6 +441,7 @@ const
   external_kind_table = new u8_atom(T.external_kind, 1),  // ExternalKind
   external_kind_memory = new u8_atom(T.external_kind, 2),  // ExternalKind
   external_kind_global = new u8_atom(T.external_kind, 3),  // ExternalKind
+  external_kind_tag = new u8_atom(T.external_kind, 4),  // ExternalKind
 
   str = data => new str_atom(varuint32(data.length), data),  // ArrayLike uint8 -> Str
 
@@ -456,6 +458,7 @@ const
   sect_id_code = varuint7(10),
   sect_id_data = varuint7(11),
   sect_id_datacount = varuint7(12),
+  sect_id_tag = varuint7(13),
   sect_id = {
     custom: sect_id_custom,
     type: sect_id_type,
@@ -469,7 +472,8 @@ const
     element: sect_id_element,
     code: sect_id_code,
     data: sect_id_data,
-    datacount: sect_id_datacount
+    datacount: sect_id_datacount,
+    tag: sect_id_tag
   };
 
 // (VarUint7, N, [N]) -> Cell N
@@ -530,14 +534,14 @@ class i32ops extends type_atom {
   eqz (a) { return testop([0x45], a) }                                            // Op I32 -> Op I32
   eq (a, b) { return relop([0x46], a, b) }                                        // (Op I32, Op I32) -> Op I32
   ne (a, b) { return relop([0x47], a, b) }                                        // (Op I32, Op I32) -> Op I32
-  lt_s (a, b) { return relop([0x48], a, b) }                                // (Op I32, Op I32) -> Op I32
-  lt_u (a, b) { return relop([0x49], a, b) }                                // (Op I32, Op I32) -> Op I32
-  gt_s (a, b) { return relop([0x4a], a, b) }                                // (Op I32, Op I32) -> Op I32
-  gt_u (a, b) { return relop([0x4b], a, b) }                                // (Op I32, Op I32) -> Op I32
-  le_s (a, b) { return relop([0x4c], a, b) }                                // (Op I32, Op I32) -> Op I32
-  le_u (a, b) { return relop([0x4d], a, b) }                                // (Op I32, Op I32) -> Op I32
-  ge_s (a, b) { return relop([0x4e], a, b) }                                // (Op I32, Op I32) -> Op I32
-  ge_u (a, b) { return relop([0x4f], a, b) }                                // (Op I32, Op I32) -> Op I32
+  lt_s (a, b) { return relop([0x48], a, b) }                                      // (Op I32, Op I32) -> Op I32
+  lt_u (a, b) { return relop([0x49], a, b) }                                      // (Op I32, Op I32) -> Op I32
+  gt_s (a, b) { return relop([0x4a], a, b) }                                      // (Op I32, Op I32) -> Op I32
+  gt_u (a, b) { return relop([0x4b], a, b) }                                      // (Op I32, Op I32) -> Op I32
+  le_s (a, b) { return relop([0x4c], a, b) }                                      // (Op I32, Op I32) -> Op I32
+  le_u (a, b) { return relop([0x4d], a, b) }                                      // (Op I32, Op I32) -> Op I32
+  ge_s (a, b) { return relop([0x4e], a, b) }                                      // (Op I32, Op I32) -> Op I32
+  ge_u (a, b) { return relop([0x4f], a, b) }                                      // (Op I32, Op I32) -> Op I32
 
   // Numeric
   clz (a) { return unop([0x67], this, a) }                                        // Op I32 -> Op I32
@@ -1126,14 +1130,16 @@ const
   latestVersion = uint32(0x1),
   end = new instr_atom(0x0b, Void),  // Op Void
   elseOp = new instr_atom(0x05, Void),  // Op Void
+  catchAllOp = new instr_atom(0x19, Void),  // Op Void
+  delegateOp = new instr_atom(0x18, Void),  // Op Void
 
 // AnyResult R => (R, Op I32, [AnyOp], Maybe [AnyOp]) -> Op R
   if_ = (mbResult, cond, then_, else_) => {
     assert(mbResult.t === T.varuint32 || mbResult === then_.at(-1).r,
       "mbResult", mbResult, "!== then_.at(-1).r", then_.at(-1).r);
     assert(!else_ || else_.length == 0 || mbResult.t === T.varuint32 || mbResult === else_.at(-1).r,
-      "else_", else_, "!== undefined && else_.length", else_.length,
-      "!= 0 && mbResult", mbResult, "!== else_.at(-1).r", else_.at(-1).r);
+      "else_", else_, "!== undefined && else_.length", else_?.length,
+      "!= 0 && mbResult", mbResult, "!== else_.at(-1).r", else_?.at(-1).r);
     return new instr_pre_imm_post([0x04], mbResult, [cond], [mbResult], else_ ?
       [ ...then_, elseOp, ...else_, end ] : [ ...then_, end ]) },
 
@@ -1164,7 +1170,8 @@ const
       function: external_kind_function,
       table:    external_kind_table,
       memory:   external_kind_memory,
-      global:   external_kind_global
+      global:   external_kind_global,
+      tag:      external_kind_tag
     },
 
     data (buf) { return new bytes_atom(T.data, buf) },  // ArrayLike uint8 -> Data
@@ -1207,6 +1214,8 @@ const
     data_section: entries => section(sect_id_data, varuint32(entries.length), entries),
     // VarUint32 -> DataCountSection
     datacount_section: dataCount => section(sect_id_datacount, dataCount, []),
+    // [TagType] -> TagSection
+    tag_section: types => section(sect_id_tag, varuint32(types.length), types),
 
     // (Str, Str, VarUint32) -> ImportEntry
     function_import_entry: (module, field, typeIndex) =>
@@ -1220,6 +1229,12 @@ const
     // (Str, Str, GlobalType) -> ImportEntry
     global_import_entry: (module, field, type) =>
       new cell(T.import_entry, [ module, field, external_kind_global, type ]),
+    // (Str, Str, TagType) -> ImportEntry
+    tag_import_entry: (module, field, type) =>
+      new cell(T.import_entry, [ module, field, external_kind_tag, type ]),
+
+    // (Str, Str, ExternalKind, AnyImport) -> ImportEntry
+    // import_entry: (module, field, kind, imp) => new cell(T.import_entry, [ module, field, kind, imp ]),
     
     // (Str, ExternalKind, VarUint32) -> ExportEntry
     export_entry: (field, kind, index) => new cell(T.export_entry, [ field, kind, index ]),
@@ -1259,6 +1274,8 @@ const
     // (ValueType, Maybe boolean) -> GlobalType
     global_type: (contentType, mutable) => new cell(T.global_type, [
       contentType, mutable ? varuint1_1 : varuint1_0 ]),
+    // VarUint32 -> TagType
+    tag_type: typeIndex => new cell(T.tag_type, [ uint8(0), typeIndex ]),      
     
     // Expressed in number of memory pages (1 page = 64KiB)
     // (uint32, Maybe uint32) -> ResizableLimits
@@ -1356,10 +1373,10 @@ const
     drop: (r, n) => new instr_pre1([0x1a], r, n),
     // Select one of two values based on condition
     // Result R => (Op I32, Op R, Op R, Maybe [Type, Type]) -> Op R
-    select: (cond, trueRes, falseRes, [trueType, falseType]) => {
+    select: (cond, trueRes, falseRes, [trueType, falseType] = []) => {
       assert(trueRes.r === falseRes.r || (trueType && falseType));
       return trueType && falseType ?
-        new instr_pre_imm([0x1c], _, [ trueRes, falseRes, cond ], [ varuint32(2), trueType, falseType ]) :
+        new instr_pre_imm([0x1c], Void, [ trueRes, falseRes, cond ], [ varuint32(2), trueType, falseType ]) :
         new instr_pre([0x1b], trueRes.r, [ trueRes, falseRes, cond ]) },
 
     // Variable access
@@ -1437,6 +1454,24 @@ const
     atomic_wait64: (mi, addr, expect, timeout) => new instr_pre_imm([0x02, 0xfe], c.i32, [ addr, expect, timeout ], mi),
     atomic_fence: new instr_imm1([0x03, 0xfe], Void, varuint1_0),
 
+    // Exceptions
+    // AnyResult R => (R, [AnyOp], [CatchClause], [AnyOp]) -> Op R
+    try_catch: (mbResult, body, catchClauses, catchAllClause = []) => {
+      assert(mbResult.t === T.varuint32 || mbResult === body.at(-1).r,
+        "mbResult", mbResult, "!== body.at(-1).r", body.at(-1).r);
+      assert(catchClauses.every(c => c.v === 0x07), "catchClauses", catchClauses, ".some c: c.v !== 0x07");
+      return new instr_imm1_post([0x06], mbResult, [ ...body,
+        ...catchClauses, catchAllOp, ...catchAllClause, end ]) },
+    // (VarUint32, [AnyOp]) -> CatchClause
+    catch_clause: (tagIndex, body) => new instr_imm1_post([0x07], tagIndex, body),
+    // AnyResult R => (R, [AnyOp], VarUint32) -> Op R
+    try_delegate: (mbResult, body, labelIndex) =>
+      new instr_imm1_post([0x06], mbResult, [ ...body, delegateOp, labelIndex ]),
+    // (VarUint32, [AnyOp]) -> Op Void
+    throw_: (tagIndex, args) => new instr_pre_imm([0x08], Void, args, [tagIndex]),
+    // VarUint32 -> Op Void
+    rethrow: labelIndex => new instr_imm1([0x09], Void, labelIndex),
+
     // Vector const immediate value constructors
     vari8x16, vari16x8, vari32x4, vari64x2, varf32x4, varf64x2,
 
@@ -1491,6 +1526,10 @@ const
     [ 0x3, "loop" ],
     [ 0x4, "if" ],
     [ 0x5, "else" ],
+    [ 0x6, "try" ],
+    [ 0x7, "catch" ],
+    [ 0x8, "throw" ],
+    [ 0x9, "rethrow" ],
     [ 0xb, "end" ],
     [ 0xc, "br" ],
     [ 0xd, "br_if" ],
@@ -1498,6 +1537,8 @@ const
     [ 0xf, "return" ],
     [ 0x10, "call" ],
     [ 0x11, "call_indirect" ],
+    [ 0x12, "delegate" ],
+    [ 0x13, "catch_all" ],
     [ 0x1a, "drop" ],
     [ 0x1b, "select" ],
     [ 0x20, "local.get" ],

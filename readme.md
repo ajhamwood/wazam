@@ -3,6 +3,8 @@ Adapted from Rasmus Andersson's [WASM-Util](https://github.com/rsms/wasm-util), 
 <details>
   <summary>Development plan</summary>
 
+WebAssembly extensions
+
   - [x] (FF62) Mutable globals
   - [x] (FF62) Sign extension operations
   - [x] (FF64) Non-trapping float-to-int conversions
@@ -12,7 +14,7 @@ Adapted from Rasmus Andersson's [WASM-Util](https://github.com/rsms/wasm-util), 
   - [x] (FF79) Reference types
   - [x] (FF79) Threads and atomics
   - [x] (FF89) Fixed width SIMD
-  - [ ] (FF100) Legacy exception handling
+  - [x] (FF100) Legacy exception handling
   - [ ] (FF112) Extended constant expressions
   - [ ] (FF120) Garbage collection
   - [ ] (FF121) Tail calls
@@ -20,4 +22,13 @@ Adapted from Rasmus Andersson's [WASM-Util](https://github.com/rsms/wasm-util), 
   - [ ] (FF131) Exception handling with exnref
   - [ ] (FF134) JS string builtins
   - [ ] (FF134) Memory64
+
+Wazam features
+
+  - [ ] WAST to WASM (base on WASM-Util)
+  - [ ] Design & implement my own scripting language
+
+Other
+
+  - [ ] Port Citizen VM language to script
 </details>

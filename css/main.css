@@ -1,17 +1,39 @@
+@font-face {
+  font-family: 'STIX Two Math';
+  src: url('../fonts/STIXTwoMath-Regular.woff2') format('woff2');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap }
+@font-face {
+  font-family: Mercury;
+  src: url('../fonts/MercuryDisplay-Roman.woff2') format('woff2');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap }
+@font-face {
+  font-family: CaskaydiaCove;
+  src: url('../fonts/CaskaydiaCoveNerdFontComplete-Regular.woff2') format('woff2');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap }
+
+.unicode { font-family: "STIX Two Math" }
+
 html, body {
   margin: 0;
-  padding: 0 }
+  padding: 0;
+  font-family: Mercury }
 body {
   background-color: black;
   color: #ddd }
 header {
   margin: 0;
-  height: 50dvh;
+  height: 50lvh;
   background-color: #fff3 }
   header > h1 {
     margin: 0;
     width: fit-content;
-    max-width: 80dvw;
+    max-width: 80lvw;
     position: relative;
     top: 50%;
     left: 50%;
@@ -27,7 +49,14 @@ nav {
   display: grid;
   justify-items: center;
   grid-gap: .3em }
+  nav > button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    aspect-ratio: 1/1 }
+a:link { color: royalblue }
+a:visited { color: blueviolet }
 wasm-sim {
   display: block;
-  height: 100dvh;
-  width: clamp(60dvw, 50em, 90dvw) }
+  height: 100lvh;
+  width: clamp(60lvw, 50em, 90lvw) }
