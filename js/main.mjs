@@ -13,7 +13,8 @@ const sims = {};
   sims.atomics,
   sims.simd,
   sims.exn_legacy,
-  sims.ext_const
+  sims.ext_const,
+  sims.func_refs
 ] = simList);
 self.app = new $.Machine({ inView: 0, simList, viewportHeight: null });
 
@@ -29,12 +30,10 @@ navigator.serviceWorker?.register(import.meta.resolve("../coop-coep.js"))
 
 
 $.targets({
-  load () { app.emit("init") },
+  "load resize" () { app.emit("resize") },
   scroll () { app.inView = Math.floor(window.scrollY / app.viewportHeight) },
   app: {
-    init () {
-      this.viewportHeight = document.body.scrollHeight / (simList.length + .5)
-    }
+    resize () { this.viewportHeight = document.body.scrollHeight / (simList.length + .5) }
   }
 });
 

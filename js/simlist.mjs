@@ -118,14 +118,14 @@ const simList = (() => {
   const {
     uint8, uint32, biguint64, float32, float64, varuint1, varuint7, varuint32, varint7, varint32, varint64,
     vari8x16, vari16x8, vari32x4, vari64x2, varf32x4, varf64x2,
-    func, void_, heap, ref, ref_null, external_kind, data, str, str_ascii, str_utf8, module,
+    packed, heap, comp, rec, void_, ref, ref_null, external_kind, data, str, str_ascii, str_utf8, module,
     custom_section, type_section, import_section, function_section, table_section, memory_section,
     global_section, export_section, start_section, element_section, code_section, data_section, datacount_section, tag_section,
     function_import_entry, table_import_entry, memory_import_entry, global_import_entry, tag_import_entry, export_entry,
     active_elem_segment, passive_elem_segment, declarative_elem_segment, active_data_segment, passive_data_segment,
-    comp_type, func_type, table_type, global_type, tag_type, resizable_limits, global_variable, init_expr, elem_expr_func, elem_expr_null, function_body, local_entry,
-    unreachable, nop, block, void_block, loop, void_loop, if_, void_if, end, br, br_if, br_table,
-    try_catch, catch_clause, try_delegate, throw_, rethrow, return_, return_void, return_multi, call, call_indirect, drop, select,
+    comp_type, func_type, table_type, table_init_entry, global_type, tag_type, resizable_limits, global_variable, init_expr, elem_expr_func, elem_expr_null, function_body, local_entry,
+    unreachable, nop, block, void_block, loop, void_loop, if_, void_if, end, br, br_if, br_table, br_on_null, br_on_non_null,
+    try_catch, catch_clause, try_delegate, throw_, rethrow, return_, return_void, return_multi, return_call_ref, call, call_indirect, call_ref, drop, select,
     get_local, set_local, tee_local, get_global, set_global,
     current_memory, grow_memory, init_memory, drop_data, copy_memory, fill_memory, init_table, drop_elem, copy_table, set_table, get_table,
     null_ref, is_null_ref, func_ref, eq_ref, as_non_null_ref, atomic_notify, atomic_wait32, atomic_wait64, atomic_fence,
@@ -137,7 +137,7 @@ const simList = (() => {
     new WasmSim({
       module: module([
         type_section([
-          comp_type(func, [ i32 ], [ i32 ])  // type index = 0
+          comp_type(comp.Func, [ i32 ], [ i32 ])  // type index = 0
         ]),
         function_section([
           varuint32(0)  // function index = 0, using type index 0
@@ -171,7 +171,7 @@ const simList = (() => {
     new WasmSim({
       module: module([
         type_section([
-          comp_type(func, [ i32, i32 ], [ i32 ])
+          comp_type(comp.Func, [ i32, i32 ], [ i32 ])
         ]),
         import_section([
           memory_import_entry(
@@ -222,7 +222,7 @@ const simList = (() => {
     new WasmSim({
       module: module([
         type_section([
-          comp_type(func, [ f32 ], [ i32 ])
+          comp_type(comp.Func, [ f32 ], [ i32 ])
         ]),
         function_section([
           varuint32(0)
@@ -247,7 +247,7 @@ const simList = (() => {
     new WasmSim({
       module: module([
         type_section([
-          comp_type(func, [ i32 ], [ i32 ])
+          comp_type(comp.Func, [ i32 ], [ i32 ])
         ]),
         function_section([
           varuint32(0)
@@ -272,7 +272,7 @@ const simList = (() => {
     new WasmSim({
       module: module([
         type_section([
-          comp_type(func, [ i32, i32, i32 ])
+          comp_type(comp.Func, [ i32, i32, i32 ])
         ]),
         import_section([
           memory_import_entry(
@@ -315,9 +315,9 @@ const simList = (() => {
     new WasmSim({
       module: module([
         type_section([
-          comp_type(func, [ heap.Extern ]),
-          comp_type(func, [ i32, heap.Extern ]),
-          comp_type(func, [ i32 ]),
+          comp_type(comp.Func, [ heap.Extern ]),
+          comp_type(comp.Func, [ i32, heap.Extern ]),
+          comp_type(comp.Func, [ i32 ]),
         ]),
         import_section([
           function_import_entry(
@@ -358,7 +358,7 @@ const simList = (() => {
     new WasmSim({
       module: module([
         type_section([
-          comp_type(func, [], [ i32, i32 ])
+          comp_type(comp.Func, [], [ i32, i32 ])
         ]),
         function_section([
           varuint32(0)
@@ -387,8 +387,8 @@ const simList = (() => {
     new WasmSim({
       module: module([
         type_section([
-          comp_type(func, [ i32 ], []),
-          comp_type(func, [], [ i32 ])
+          comp_type(comp.Func, [ i32 ], []),
+          comp_type(comp.Func, [], [ i32 ])
         ]),
         import_section([
           memory_import_entry(
@@ -462,7 +462,7 @@ const simList = (() => {
     new WasmSim({
       module: module([
         type_section([
-          comp_type(func, [], [])
+          comp_type(comp.Func, [], [])
         ]),
         import_section([
           memory_import_entry(
@@ -516,8 +516,8 @@ const simList = (() => {
     new WasmSim({
       module: module([
         type_section([
-          comp_type(func, [ i32 ], [ i32 ]),
-          comp_type(func, [ i32 ], [])
+          comp_type(comp.Func, [ i32 ], [ i32 ]),
+          comp_type(comp.Func, [ i32 ], [])
         ]),
         import_section([
           tag_import_entry(str_utf8("js"), str_utf8("exn"), tag_type(varuint32(1)))
@@ -573,7 +573,7 @@ const simList = (() => {
     new WasmSim({
       module: module([
         type_section([
-          comp_type(func, [], [ i32 ])
+          comp_type(comp.Func, [], [ i32 ])
         ]),
         import_section([
           global_import_entry(str_utf8("js"), str_utf8("global0"), global_type(i32))
@@ -606,6 +606,62 @@ const simList = (() => {
         this.console.log("Wasm legacy exceptions test:", instance.exports.next())
       },
       importsObj: { js: { global0: new WebAssembly.Global({ value: "i32" }, 1) } }
+    }),
+
+    new WasmSim({
+      module: module([
+        type_section([
+          comp_type(comp.Func, [], [ i32 ]),
+          comp_type(comp.Func, [ ref_null(varuint32(0)) ], [ i32 ])
+        ]),
+        import_section([
+          table_import_entry(
+            str_utf8("js"),
+            str_utf8("tbl"),
+            table_type(heap.Func, resizable_limits(2))
+          )
+        ]),
+        function_section([
+          varuint32(0),
+          varuint32(0),
+          varuint32(1)
+        ]),
+        export_section([
+          export_entry(str_utf8("run_ref"), external_kind.function, varuint32(2))
+        ]),
+        element_section([
+          active_elem_segment(
+            init_expr([ i32.const(0) ]),
+            [ varuint32(0), varuint32(1) ]
+          )
+        ]),
+        code_section([
+          function_body([], [ i32.const(-1) ]),
+          function_body([], [ i32.const(3) ]),
+          function_body([], [
+            call_ref(i32,
+              block(
+                ref_null(varuint32(0)),
+                [
+                  br_on_non_null(0, get_local(i32, 0)),
+                  return_(call_ref(i32,
+                    func_ref(0),
+                    varuint32(0)
+                  ))
+                ]
+              ),
+              varuint32(0)
+            )
+          ])
+        ])
+      ]),
+      async runner () {
+        const { instance } = await this.makeInstance();
+        this.console.log("Wasm typed function references test:",
+          instance.exports.run_ref(this.imports.js.tbl.get(1)),
+          instance.exports.run_ref(null));
+      },
+      importsObj: { js: { tbl: new WebAssembly.Table({ initial: 2, maximum: 2, element: "anyfunc" }) } }
     })
     
   ]

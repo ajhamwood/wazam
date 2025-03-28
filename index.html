@@ -15,10 +15,10 @@
   </header>
   <main>
     <nav>
-      <button id="first" class="unicode">⏫</button>
-      <button id="prev" class="unicode">⏶</button>
-      <button id="next" class="unicode">⏷</button>
-      <button id="last" class="unicode">⏬</button>
+      <button id="first">⏫</button>
+      <button id="prev">⏶</button>
+      <button id="next">⏷</button>
+      <button id="last">⏬</button>
     </nav>
     <wasm-sim id="fact">
       <h1 slot="title">WebAssembly 1.0 MVP</h1>
@@ -82,6 +82,12 @@
         <a href="https://github.com/WebAssembly/exception-handling/blob/main/proposals/exception-handling/legacy/Exceptions.md">Proposal</a>
       </p>
     </wasm-sim>
+    <wasm-sim id="func_refs">
+      <h1 slot="title">Function references</h1>
+      <p>
+        <a href="https://github.com/WebAssembly/function-references/blob/master/proposals/function-references/Overview.md">Proposal</a>
+      </p>
+    </wasm-sim>
   </main>
   <template id="wasm-sim">
     <style>
@@ -91,8 +97,7 @@ button {
   align-items: center;
   justify-content: center;
   gap: .2em;
-  font-family: Aloha }
-.unicode { font-family: "STIX Two Math" }
+  font-family: Aloha, "STIX Two Math" }
 article {
   container-type: size;
   display: grid;
@@ -132,8 +137,8 @@ article {
       <div class="buffer-repr"></div>
       <div class="console"></div>
       <div class="controls">
-        <button class="run-wasm">Run <span class="unicode">⏵</span></button>
-        <button class="reset-wasm">Reset <span class="unicode">⏮</span></button>
+        <button class="run-wasm">Run ⏵</button>
+        <button class="reset-wasm">Reset ⏮</button>
       </div>
     </article>
   </template>

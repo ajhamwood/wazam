@@ -16,7 +16,7 @@ WebAssembly extensions
   - [x] (FF89) Fixed width SIMD
   - [x] (FF100) Legacy exception handling
   - [x] (FF112) Extended constant expressions
-  - [ ] (FF120) Typed function references
+  - [x] (FF120) Typed function references
   - [ ] (FF120) Garbage collection
   - [ ] (FF121) Tail calls
   - [ ] (FF125) Multi-memory

@@ -58,14 +58,14 @@ const T = {
   varint7:        Symbol('vs7'),
   varint32:       Symbol('vs32'),
   varint64:       Symbol('vs64'),
-  float32:        Symbol('f32'), // non-standard
-  float64:        Symbol('f64'), // non-standard
+  float32:        Symbol('f32'),
+  float64:        Symbol('f64'),
   vec128:         Symbol('v128'),
   prefix:         Symbol('prefix'), // non-standard
   data:           Symbol('data'), // non-standard
-  type:           Symbol('type'), // non-standard, signifies a varint7 type constant
+  type:           Symbol('type'), // non-standard, signifies a varint7 type constanttype_imm1
+  type_imm1:      Symbol('type_imm1'),
   external_kind:  Symbol('type'),
-  reference_kind: Symbol('type'),
 
   // Instructions
   instr:              Symbol('instr'), // non-standard
@@ -82,6 +82,7 @@ const T = {
   import_entry:     Symbol('import_entry'),
   export_entry:     Symbol('export_entry'),
   local_entry:      Symbol('local_entry'),
+  table_entry:      Symbol('table_entry'),
   comp_type:        Symbol('comp_type'),
   func_type:        Symbol('func_type'),
   table_type:       Symbol('table_type'),
@@ -175,7 +176,7 @@ class u8_atom extends val_atom {
   emit (e) { return e.writeU8(this.v) }
 }
 
-// (u8_atom int7) type_atom => type_atom
+// (u8_atom int7) type_atom => type_atom : R
 class type_atom extends u8_atom {
   // (int7, uint8) -> type_atom
   constructor (v, b) { super(T.type, v); this.b = b }
@@ -204,6 +205,24 @@ class cell {
     this.v = v
   }
   emit (e) { return writev(e, this.v) }
+}
+
+// (u8_atom int7) type_cell => type_cell : R
+class type_cell {
+  // (int7, uint8) -> type_atom
+  constructor (t, v, z) { this.t = t; this.z = z; this.v = v }
+  emit (e) { return e }
+}
+
+// type_cell type_imm1 => type_imm1
+class type_imm1 extends type_cell {
+  // (uint8, AnyResult, HeapType) -> type_imm1
+  constructor (v, b, imm) {
+    super(T.type_imm1, v, 1 + imm.z);
+    this.b = b;
+    this.imm = imm
+  }
+  emit (e) { return this.imm.emit(e.writeU8(this.b)) }
 }
 
 
@@ -421,27 +440,42 @@ function varf64x2 (value) {
 
 
 // Language types
-function ref (heapType) {
-  return new instr_imm1([0x64], T.reference_kind, heapType)
-}
-function ref_null (heapType) {
-  return new instr_imm1([0x63], T.reference_kind, heapType)
-}
+function ref (heapType) { return new type_imm1(-0x1c, 0x64, heapType) }
+function ref_null (heapType) { return new type_imm1(-0x1d, 0x63, heapType) }
 const
-  Arr = new type_atom(-0x22, 0x5E),    // Array
-  Struct = new type_atom(-0x21, 0x5F), // Struct
-  Func = new type_atom(-0x20, 0x60),   // Func
-  Void = new type_atom(-0x40, 0x40),   // Void
-  Heap = {
-    Func: new type_atom(-0x10, 0x70),   // Func ref
-    Extern: new type_atom(-0x11, 0x6F)  // Extern ref
+  Packed = {                              // Packed types
+    I8: new type_atom(-0x08, 0x78),       // 8-bit integer type
+    I16: new type_atom(-0x09, 0x77),      // 16-bit integer type
   },
+  Heap = {                                // Heap types
+    Nofunc: new type_atom(-0x0d, 0x73),   // Null func ref
+    Noextern: new type_atom(-0x0e, 0x72), // Null extern ref
+    None: new type_atom(-0x0f, 0x71),     // Null heap ref
+    Func: new type_atom(-0x10, 0x70),     // Func ref
+    Extern: new type_atom(-0x11, 0x6f),   // Extern ref
+    Any: new type_atom(-0x12, 0x6e),      // Any ref
+    Eq: new type_atom(-0x13, 0x6d),       // Eq ref
+    I31: new type_atom(-0x14, 0x6c),      // Unboxed scalar ref
+    Struct: new type_atom(-0x15, 0x6b),   // Struct ref
+    Arr: new type_atom(-0x16, 0x6a),      // Array ref
+  },
+  Comp = {                                // Composite types
+    Func: new type_atom(-0x20, 0x60),     // Func type
+    Struct: new type_atom(-0x21, 0x5f),   // Struct type
+    Arr: new type_atom(-0x22, 0x5e),      // Array type
+  },
+  Rec = {                                 // Recursive types
+    Sub: new type_atom(-0x30, 0x50),      // Sub type
+    SubFinal: new type_atom(-0x31, 0x4f), // Final sub type
+    Rec: new type_atom(-0x32, 0x4e),      // Recursive type
+  },
+  Void = new type_atom(-0x40, 0x40),      // Empty result type
 
   external_kind_function = new u8_atom(T.external_kind, 0),  // ExternalKind
-  external_kind_table = new u8_atom(T.external_kind, 1),  // ExternalKind
-  external_kind_memory = new u8_atom(T.external_kind, 2),  // ExternalKind
-  external_kind_global = new u8_atom(T.external_kind, 3),  // ExternalKind
-  external_kind_tag = new u8_atom(T.external_kind, 4),  // ExternalKind
+  external_kind_table = new u8_atom(T.external_kind, 1),     // ExternalKind
+  external_kind_memory = new u8_atom(T.external_kind, 2),    // ExternalKind
+  external_kind_global = new u8_atom(T.external_kind, 3),    // ExternalKind
+  external_kind_tag = new u8_atom(T.external_kind, 4),       // ExternalKind
 
   str = data => new str_atom(varuint32(data.length), data),  // ArrayLike uint8 -> Str
 
@@ -844,11 +878,11 @@ class v128ops extends type_atom {
   load64_lane (mi, lane, addr) { return memload_lane(0x57, this, mi, lane, addr) }   // (MemImm, uint8, Op Int) -> Op V128
   load32_zero (mi, addr) { return memload(0x5c, this, mi, addr) }                 // (MemImm, Op Int) -> Op V128
   load64_zero (mi, addr) { return memload(0x5d, this, mi, addr) }                 // (MemImm, Op Int) -> Op V128
-  store (mi, addr, v) { return memstore([0x0b, 0xfd], mi, addr, v) }              // (MemImm, Op Int, Op Result) -> Op Void
-  store8_lane (mi, lane, addr, v) { return memstore_lane(0x58, mi, lane, addr, v) }  // (MemImm, uint8, Op Int, Op Result) -> Op Void
-  store16_lane (mi, lane, addr, v) { return memstore_lane(0x59, mi, lane, addr, v) } // (MemImm, uint8, Op Int, Op Result) -> Op Void
-  store32_lane (mi, lane, addr, v) { return memstore_lane(0x5a, mi, lane, addr, v) } // (MemImm, uint8, Op Int, Op Result) -> Op Void
-  store64_lane (mi, lane, addr, v) { return memstore_lane(0x5b, mi, lane, addr, v) } // (MemImm, uint8, Op Int, Op Result) -> Op Void
+  store (mi, addr, v) { return memstore([0x0b, 0xfd], mi, addr, v) }              // (MemImm, Op Int, Op V128) -> Op Void
+  store8_lane (mi, lane, addr, v) { return memstore_lane(0x58, mi, lane, addr, v) }  // (MemImm, uint8, Op Int, Op I32) -> Op Void
+  store16_lane (mi, lane, addr, v) { return memstore_lane(0x59, mi, lane, addr, v) } // (MemImm, uint8, Op Int, Op I32) -> Op Void
+  store32_lane (mi, lane, addr, v) { return memstore_lane(0x5a, mi, lane, addr, v) } // (MemImm, uint8, Op Int, Op I32 | Op F32) -> Op Void
+  store64_lane (mi, lane, addr, v) { return memstore_lane(0x5b, mi, lane, addr, v) } // (MemImm, uint8, Op Int, Op I64 | Op F64) -> Op Void
 
   // Bitwise operations
   not (a) { return unop([0x4d, 0xfd], this, a) }                                  // Op V128 -> Op V128
@@ -1135,18 +1169,16 @@ const
 
 // AnyResult R => (R, Op I32, [AnyOp], Maybe [AnyOp]) -> Op R
   if_ = (mbResult, cond, then_, else_) => {
-    assert(mbResult.t === T.varuint32 || mbResult === then_.at(-1).r,
-      "mbResult", mbResult, "!== then_.at(-1).r", then_.at(-1).r);
-    assert(!else_ || else_.length == 0 || mbResult.t === T.varuint32 || mbResult === else_.at(-1).r,
-      "else_", else_, "!== undefined && else_.length", else_?.length,
-      "!= 0 && mbResult", mbResult, "!== else_.at(-1).r", else_?.at(-1).r);
+    // assert(mbResult.t === T.varuint32 || mbResult === then_.at(-1).r,
+    //   "mbResult", mbResult, "!== then_.at(-1).r", then_.at(-1).r);
+    // assert(!else_ || else_.length == 0 || mbResult.t === T.varuint32 || mbResult === else_.at(-1).r,
+    //   "else_", else_, "!== undefined && else_.length", else_?.length,
+    //   "!= 0 && mbResult", mbResult, "!== else_.at(-1).r", else_?.at(-1).r);
     return new instr_pre_imm_post([0x04], mbResult, [cond], [mbResult], else_ ?
       [ ...then_, elseOp, ...else_, end ] : [ ...then_, end ]) },
 
 // Result R => Op R -> Op R
   return_ = value => new instr_pre1([0x0f], value.r, value),
-// Result R => 
-  return_multi = values => new instr_pre([0x0f], values.map(v => v.r), values),
 
   t = T,
   c = {
@@ -1162,9 +1194,9 @@ const
     varint32,
     varint64,
 
-    func: Func, struct: Struct, arr: Arr,
+    packed: Packed, heap: Heap, comp: Comp, rec: Rec,
     void: Void, void_: Void,
-    heap: Heap, ref, ref_null,
+    ref, ref_null,
 
     external_kind: {
       function: external_kind_function,
@@ -1196,8 +1228,8 @@ const
     import_section: entries => section(sect_id_import, varuint32(entries.length), entries),
     // [VarUint32] -> FunctionSection
     function_section: types => section(sect_id_function, varuint32(types.length), types),
-    // [TableType] -> TableSection
-    table_section: types => section(sect_id_table, varint32(types.length), types),
+    // [TableEntry] -> TableSection
+    table_section: entries => section(sect_id_table, varint32(entries.length), entries),
     // [ResizableLimits] -> MemorySection
     memory_section: limits => section(sect_id_memory, varuint32(limits.length), limits),
     // [GlobalVariable] -> GlobalSection
@@ -1235,14 +1267,21 @@ const
 
     // (Str, Str, ExternalKind, AnyImport) -> ImportEntry
     // import_entry: (module, field, kind, imp) => new cell(T.import_entry, [ module, field, kind, imp ]),
+
+    // (ElemType, ResizableLimits) -> TableEntry null
+    table_type: (type, limits) => {
+      assert(type.v == Heap.Extern.v || type.v == Heap.Func.v, "type.v", type.v, "!= Heap.Extern.v", Heap.Extern.v, "&& type.v !== Heap.Func.v", Heap.Func.v);
+      return new cell(T.table_type, [ type, limits ]) },
+    // (TableEntry null, InitExpr) -> TableEntry init
+    table_init_entry: (entry, expr) => new cell(T.table_entry, [ entry, expr ]),
     
     // (Str, ExternalKind, VarUint32) -> ExportEntry
     export_entry: (field, kind, index) => new cell(T.export_entry, [ field, kind, index ]),
     
     // (InitExpr, [VarUint32] | [ElemExpr], Maybe RefType, Maybe VarUint32) -> ElemSegment
-    active_elem_segment: (offset, elemPayload, refType, tableIndex) => new cell(T.elem_segment, tableIndex ?
-      [ varuint32(2 + 4 * !!refType), tableIndex ?? varuint1_0, c.init_expr([offset]), refType ?? varuint1_0, varuint32(elemPayload.length), ...elemPayload ] :
-      [ varuint32(0 + 4 * !!refType), c.init_expr([offset]), varuint32(elemPayload.length), ...elemPayload ]),
+    active_elem_segment: (expr, elemPayload, refType, tableIndex) => new cell(T.elem_segment, tableIndex ?
+      [ varuint32(2 + 4 * !!refType), tableIndex ?? varuint1_0, expr, refType ?? varuint1_0, varuint32(elemPayload.length), ...elemPayload ] :
+      [ varuint32(0 + 4 * !!refType), expr, varuint32(elemPayload.length), ...elemPayload ]),
     // ([VarUint32] | [ElemExpr], Maybe RefType) -> ElemSegment
     passive_elem_segment: (elemPayload, refType) => new cell(T.elem_segment,
       [ varuint32(1 + 4 * !!refType), refType ?? varuint1_0, varuint32(elemPayload.length), ...elemPayload ]),
@@ -1262,15 +1301,11 @@ const
     // (R, ArrType | StructType | FuncType) -> CompType
     comp_type: (ctype, ...typeData) => {
       switch (ctype) {
-        case Func: return new cell(T.comp_type, [ Func, c.func_type(...typeData) ]);
-        case Arr: break;
-        case Struct: break;
+        case Comp.Func: return new cell(T.comp_type, [ Comp.Func, c.func_type(...typeData) ]);
+        case Comp.Arr: break;
+        case Comp.Struct: break;
       }
     },
-    // (ElemType, ResizableLimits) -> TableType
-    table_type: (type, limits) => {
-      assert(type.v == Heap.Extern.v || type.v == Heap.Func.v, "type.v", type.v, "!= Extern.v", Heap.Extern.v, "&& type.v !== Func.v", Heap.Func.v);
-      return new cell(T.table_type, [ type, limits ]) },
     // (ValueType, Maybe boolean) -> GlobalType
     global_type: (contentType, mutable) => new cell(T.global_type, [
       contentType, mutable ? varuint1_1 : varuint1_0 ]),
@@ -1317,25 +1352,25 @@ const
     // Begin a block which can also form control flow loops
     // AnyResult R => (R | VarUint32, [AnyOp]) -> Op R
     block: (mbResult, body) => {
-      assert(mbResult.t === T.varuint32 || mbResult === body.at(-1).r,
-        "mbResult", mbResult, "!== body.at(-1).r", body.at(-1).r);
+      // assert(mbResult.t === T.varuint32 || mbResult === body.at(-1).r,
+      //   "mbResult", mbResult, "!== body.at(-1).r", body.at(-1).r);
       return new instr_imm1_post([0x02], mbResult, [ ...body, end ]) },
     // [AnyOp] -> Op Void
     void_block: body => {
-      assert(body.length == 0 || Void === body.at(-1).r,
-        "body.length", body.length, "!= 0 && Void !== body.at(-1).r", body.at(-1).r);
+      // assert(body.length == 0 || Void === body.at(-1).r,
+      //   "body.length", body.length, "!= 0 && Void !== body.at(-1).r", body.at(-1).r);
       return new instr_imm1_post([0x02], Void, [ ...body, end ]) },
 
     // Begin a block which can also form control flow loops
     // AnyResult R => (R | VarUint32, [AnyOp]) -> Op R
     loop: (mbResult, body) => {
-      assert(mbResult.t === T.varuint32 || mbResult === body.at(-1).r,
-        "mbResult", mbResult, "!== body.at(-1).r", body.at(-1).r);
+      // assert(mbResult.t === T.varuint32 || mbResult === body.at(-1).r,
+      //   "mbResult", mbResult, "!== body.at(-1).r", body.at(-1).r);
       return new instr_imm1_post([0x03], mbResult, [ ...body, end ]) },
     // [AnyOp] -> Op Void
     void_loop: body => {
-      assert(body.length == 0 || Void === body.at(-1).r,
-        "body.length", body.length, "!= 0 && Void !== body.at(-1).r", body.at(-1).r);
+      // assert(body.length == 0 || Void === body.at(-1).r,
+      //   "body.length", body.length, "!= 0 && Void !== body.at(-1).r", body.at(-1).r);
       return new instr_imm1_post([0x03], Void, [ ...body, end ]) },
     if: if_, if_,  // AnyResult R => (R | VarUint32, Op I32, [AnyOp], Maybe [AnyOp]) -> Op R
     // (Op I32, [AnyOp], Maybe [AnyOp]) -> Op Void
@@ -1355,16 +1390,25 @@ const
     // ([VarUint32], VarUint32, AnyOp) -> Op Void
     br_table: (targetLabels, defaultLabel, index) => new instr_pre_imm([0x0e], Void,
       [ index ], [ varuint32(targetLabels.length), ...targetLabels, defaultLabel ]),
+    // HeapType HT => NullRef HT -> Ref HT
+    br_on_null: (relDepth, value) => new instr_pre_imm([0xd5], Void, [ value ], [ varuint32(relDepth) ]),
+    // HeapType HT => NullRef HT -> Op Void
+    br_on_non_null: (relDepth, value) => new instr_pre_imm([0xd6], Void, [ value ], [ varuint32(relDepth) ]),
     // Returns a value or no values from this function
     return: return_, return_,  // Result R => Op R -> Op R
     return_void: new instr_atom(0x0f, Void),  // Op Void
-    return_multi, // [Op R] -> [Op R]
+    // Result R => [Op R] -> [Op R]
+    return_multi: values => new instr_pre([0x0f], values.map(v => v.r), values),
+    // Result R => Ref R -> Op Void
+    return_call_ref: (r, reference) => new instr_pre([0x15], r, reference),
     // Calling
     // Result R => (R, VarUint32, [AnyOp]) -> Op R
     call: (r, funcIndex, args) => new instr_pre_imm([0x10], r, args, [ funcIndex ]),
     // Result R => (R, [AnyOp], InitExpr, VarUint32, VarUint32) -> Op R
     call_indirect: (r, args, offset, funcIndex, typeIndex) =>
       new instr_pre_imm([0x11], r, [ ...args, offset ], [ typeIndex, funcIndex ]),
+    // Result R => (R, Ref R, VarUint32) -> Op Void
+    call_ref: (r, reference, typeIndex) => new instr_pre_imm([0x14], r, [ reference ], [ typeIndex ]),
 
     // Drop discards the value of its operand
     // R should be the value "under" the operand on the stack
@@ -1419,7 +1463,7 @@ const
       new instr_pre_imm([0x0b, 0xfc], Void, [ dest, byteVal, size ], [ varuint1_0 ]),
     // Result R => (InitExpr, uint32) -> Op R
     get_table: (tableIndex, offset) =>
-      new instr_pre_imm([0x25], ref(Func), [ offset ], [ varuint32(tableIndex) ]),
+      new instr_pre_imm([0x25], ref(Comp.Func), [ offset ], [ varuint32(tableIndex) ]),
     // (Op Ref, InitExpr, uint32) -> Void
     set_table: (tableIndex, value, offset) =>
       new instr_pre_imm([0x26], Void, [ offset, value ], [ varuint32(tableIndex) ]),
@@ -1438,7 +1482,7 @@ const
     // RefType -> Op I32
     is_null_ref: reference => new instr_pre1([0xd1], c.i32, reference),
     // uint32 -> RefType
-    func_ref: funcIndex => new instr_imm1([0xd2], ref(Func), varuint32(funcIndex)), // Is this correct?
+    func_ref: funcIndex => new instr_imm1([0xd2], ref(Comp.Func), varuint32(funcIndex)),
     // (RefType, RefType) -> Op I32
     eq_ref: (ref1, ref2) => new instr_pre([0xd3], c.i32, [ ref1, ref2 ]),
     // RefType -> RefType
@@ -1538,6 +1582,7 @@ const
     [ 0x10, "call" ],
     [ 0x11, "call_indirect" ],
     [ 0x14, "call_ref" ],
+    [ 0x15, "return_call_ref" ],
     [ 0x18, "delegate" ],
     [ 0x19, "catch_all" ],
     [ 0x1a, "drop" ],
@@ -2063,11 +2108,19 @@ function fmtimm (n) {
       case -3:    return 'f32'
       case -4:    return 'f64'
       case -5:    return 'v128'
-      case -0x10: return 'extern'
+      case -0x10: return 'funcref'
+      case -0x11: return 'externref'
       case -0x20: return 'func'
       case -0x40: return 'void'
       default: throw new Error('unexpected type ' + n.t.toString())
     }
+    case t.type_imm1:
+      let s;
+      switch (n.v) {
+        case -0x1c: s = 'ref'; break;
+        case -0x1d: s = 'ref null'
+      }
+      return s + " " + fmtimm(n.imm);
     default: throw new Error('unexpected imm ' + n.t.toString())
   }
 }
