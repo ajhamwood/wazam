@@ -11,17 +11,23 @@
   font-style: normal;
   font-display: swap }
 
+@media (prefers-color-scheme: dark) {
+  html > body {
+    background-color: black;
+    color: #ddd }
+    body > header { background-color: #fff3 } }
+
 html, body {
   margin: 0;
   padding: 0 }
 body, button { font-family: Aloha, "STIX Two Math" }
 body {
-  background-color: black;
-  color: #ddd }
+  background-color: white;
+  color: #222 }
 header {
   margin: 0;
   height: 50lvh;
-  background-color: #fff3 }
+  background-color: #0003 }
   header > h1 {
     margin: 0;
     width: fit-content;
@@ -45,6 +51,7 @@ nav {
     display: flex;
     align-items: center;
     justify-content: center;
+    cursor: pointer;
     aspect-ratio: 1/1 }
 a:link { color: royalblue }
 a:visited { color: blueviolet }

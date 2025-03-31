@@ -6,6 +6,7 @@
   <meta name='viewport' content='width=device-width, initial-scale=1, interactive-widget=overlays-content'>
   <meta name='keywords' content=''>
   <meta name='description' content=''>
+  <meta name='color-scheme' content='dark light'>
   <link rel='icon' type='image/x-icon' href='data:image/x-icon;base64,'>
   <link rel="stylesheet" href="css/main.css">
 </head>
@@ -67,7 +68,7 @@
     <wasm-sim id="simd">
       <h1 slot="title">SIMD</h1>
       <p>
-        <a href="https://github.com/WebAssembly/simd/blob/main/proposals/simd/SIMD.md">Proposal</a>. Many of the instructions listed in the core spec seem to not be implemented yet in 2025.
+        <a href="https://github.com/WebAssembly/simd/blob/main/proposals/simd/SIMD.md">Proposal</a>
       </p>
     </wasm-sim>
     <wasm-sim id="exn_legacy">
@@ -88,15 +89,23 @@
         <a href="https://github.com/WebAssembly/function-references/blob/master/proposals/function-references/Overview.md">Proposal</a>
       </p>
     </wasm-sim>
+    <wasm-sim id="gc">
+      <h1 slot="title">Garbage collection</h1>
+      <p>
+        <a href="https://github.com/WebAssembly/gc/blob/main/proposals/gc/Overview.md">Proposal</a>
+      </p>
+    </wasm-sim>
   </main>
   <template id="wasm-sim">
     <style>
-div { color: #ddd }
+@media (prefers-color-scheme: dark) {
+  article > :is(.text-repr, .buffer-repr, .console) { background-color: #fff3 } }
 button {
   display: flex;
   align-items: center;
   justify-content: center;
   gap: .2em;
+  cursor: pointer;
   font-family: Aloha, "STIX Two Math" }
 article {
   container-type: size;
@@ -109,14 +118,14 @@ article {
   .text-repr, .buffer-repr, .console {
     font-family: Aloha, monospace;
     margin: 1rem;
-    background-color: #fff3;
+    background-color: #0003;
     padding: .3rem;
     overflow: scroll }
   .text-repr {
     white-space: pre }
   .buffer-repr {
     margin-left: 0;
-    font-size: min(1em, calc(1.54 / 23 * (50cqw - 1.6rem - .5px))) }
+    font-size: min(1em, calc((50cqw - 1.6rem - .5px) * 1.54 / 23)) }
   .console {
     margin: 0 1rem 1rem;
     white-space: pre-wrap }

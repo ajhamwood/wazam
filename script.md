@@ -6,9 +6,11 @@
     import table {5} ext t;                // table import, externref
     import memory {1, 64} shared m;        // memory import, shared
     m[65531] = "hello";                    // data
+    data $label "goodbye"
     import mut i64 x;                      // global import, mutable
     table {2, 4} r;                        // table entry
     r[0] = [&fact, &g];                    // element, funcref
+    elem $label [&fact, &g];
     export table {1} ext u[0] = &f;        // table export
     export import memory {1} l;            // both import and export
     export f64 y = add(x, 2.0);            // global variable

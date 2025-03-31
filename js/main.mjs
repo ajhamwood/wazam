@@ -14,7 +14,8 @@ const sims = {};
   sims.simd,
   sims.exn_legacy,
   sims.ext_const,
-  sims.func_refs
+  sims.func_refs,
+  sims.gc
 ] = simList);
 self.app = new $.Machine({ inView: 0, simList, viewportHeight: null });
 

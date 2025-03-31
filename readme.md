@@ -17,12 +17,13 @@ WebAssembly extensions
   - [x] (FF100) Legacy exception handling
   - [x] (FF112) Extended constant expressions
   - [x] (FF120) Typed function references
-  - [ ] (FF120) Garbage collection
+  - [x] (FF120) Garbage collection
   - [ ] (FF121) Tail calls
   - [ ] (FF125) Multi-memory
   - [ ] (FF131) Exception handling with exnref
   - [ ] (FF134) JS string builtins
   - [ ] (FF134) Memory64
+  - [ ] (?) Relaxed SIMD
 
 Wazam features
 

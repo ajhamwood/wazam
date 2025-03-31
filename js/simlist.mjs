@@ -41,6 +41,8 @@ class WasmSim {
   set printBuf (_) {}
   get imports () { return this.#importsObj }
   set imports (_) {}
+  get raw () { return new Uint8Array(this.#buffer) }
+  set raw (_) {}
 
   findImport (im) {
     for (const [module, mObj] of Object.entries(this.#importsObj))
@@ -118,17 +120,21 @@ const simList = (() => {
   const {
     uint8, uint32, biguint64, float32, float64, varuint1, varuint7, varuint32, varint7, varint32, varint64,
     vari8x16, vari16x8, vari32x4, vari64x2, varf32x4, varf64x2,
-    packed, heap, comp, rec, void_, ref, ref_null, external_kind, data, str, str_ascii, str_utf8, module,
+    packed, heap, comp, void_, ref, ref_null, external_kind, data, str, str_ascii, str_utf8, module,
     custom_section, type_section, import_section, function_section, table_section, memory_section,
     global_section, export_section, start_section, element_section, code_section, data_section, datacount_section, tag_section,
     function_import_entry, table_import_entry, memory_import_entry, global_import_entry, tag_import_entry, export_entry,
     active_elem_segment, passive_elem_segment, declarative_elem_segment, active_data_segment, passive_data_segment,
-    comp_type, func_type, table_type, table_init_entry, global_type, tag_type, resizable_limits, global_variable, init_expr, elem_expr_func, elem_expr_null, function_body, local_entry,
-    unreachable, nop, block, void_block, loop, void_loop, if_, void_if, end, br, br_if, br_table, br_on_null, br_on_non_null,
+    rec_type, sub_type, comp_type, func_type, field_type, table_type, table_init_entry, global_type, tag_type, resizable_limits, global_variable, init_expr, elem_expr_func, elem_expr_null, function_body, local_entry,
+    unreachable, nop, block, void_block, loop, void_loop, if_, void_if, end, br, br_if, br_table, br_on_null, br_on_non_null, br_on_cast, br_on_cast_fail,
     try_catch, catch_clause, try_delegate, throw_, rethrow, return_, return_void, return_multi, return_call_ref, call, call_indirect, call_ref, drop, select,
     get_local, set_local, tee_local, get_global, set_global,
-    current_memory, grow_memory, init_memory, drop_data, copy_memory, fill_memory, init_table, drop_elem, copy_table, set_table, get_table,
-    null_ref, is_null_ref, func_ref, eq_ref, as_non_null_ref, atomic_notify, atomic_wait32, atomic_wait64, atomic_fence,
+    size_memory, grow_memory, init_memory, drop_data, copy_memory, fill_memory, init_table, drop_elem, copy_table, grow_table, size_table, fill_table, set_table, get_table,
+    null_ref, is_null_ref, func_ref, eq_ref, as_non_null_ref,
+    new_struct, new_default_struct, get_struct, get_struct_s, get_struct_u, set_struct,
+    new_array, new_default_array, new_fixed_array, new_data_array, new_elem_array, get_array, get_array_s, get_array_u, set_array, len_array, fill_array, copy_array, init_data_array, init_elem_array,
+    test_ref, test_null_ref, cast_ref, cast_null_ref, convert_extern_any, convert_any_extern, i31_ref, get_i31_s, get_i31_u, 
+    atomic_notify, atomic_wait32, atomic_wait64, atomic_fence,
     align8, align16, align32, align64, i32, i64, f32, f64, v128, i8x16, i16x8, i32x4, i64x2, f32x4, f64x2
   } = c;
 
@@ -339,7 +345,7 @@ const simList = (() => {
         ]),
         code_section([
           function_body([], [
-            set_table(0, get_local(heap.Extern, 1), get_local(i32, 0))
+            set_table(0, get_local(i32, 0), get_local(heap.Extern, 1))
           ]),
           function_body([], [
             call(void_, varuint32(0), [ get_table(0, get_local(i32, 0)) ])
@@ -481,12 +487,7 @@ const simList = (() => {
           function_body([], [
             v128.store(align32,
               i32.const(16),
-              // f64x2.promote_low_f32x4(
-              //   v128.load(align64, i32.const(0)),
-              //   // v128.load(align64, i32.const(16)),
-              // )
-              // // i64x2.splat(i64.load(align32, i32.const(16)))
-              i8x16.narrow_i16x8_u(
+              i16x8.q15mulr_sat_s(
                 v128.load(align64, i32.const(0)),
                 v128.load(align64, i32.const(16)),
               )
@@ -496,18 +497,12 @@ const simList = (() => {
       ]),
       async runner () {
         const { instance } = await this.makeInstance();
-        // new Uint8Array(this.imports.js.mem.buffer).set(Array(32).fill(0).map((_, i) => i))
-        new Uint16Array(this.imports.js.mem.buffer).set(Array(16).fill(0).map((_, i) => i))
-        // new Uint32Array(this.imports.js.mem.buffer).set(Array(8).fill(0).map((_, i) => i))
-        // new BigUint64Array(this.imports.js.mem.buffer).set(Array(4).fill(0).map((_, i) => BigInt(i)))
-        // new Float32Array(this.imports.js.mem.buffer).set(Array(8).fill(0).map((_, i) => i + .3))
-        // new Float64Array(this.imports.js.mem.buffer).set(Array(4).fill(0).map((_, i) => i + .3))
+        new Uint16Array(this.imports.js.mem.buffer).set(Array(16).fill(0).map((_, i) => (i + 1) * 0x0800 - 1))
         this.console.log("Wasm simd test:",
-          // Array.from(new BigUint64Array(this.imports.js.mem.buffer.slice(0, 32))).map(n => Number(n)),
-          Array.from(new Uint8Array(this.imports.js.mem.buffer.slice(0, 32))),
+          Array.from(new Int16Array(this.imports.js.mem.buffer.slice(0, 16))).map(v => (v / 0x8000).toPrecision(6)),
+          Array.from(new Int16Array(this.imports.js.mem.buffer.slice(16, 32))).map(v => (v / 0x8000).toPrecision(6)),
           instance.exports.simd(),
-          // Array.from(new BigUint64Array(this.imports.js.mem.buffer.slice(0, 32))).map(n => Number(n))
-          Array.from(new Uint8Array(this.imports.js.mem.buffer.slice(0, 32)))
+          Array.from(new Int16Array(this.imports.js.mem.buffer.slice(16, 32))).map(v => (v / 0x8000).toPrecision(6))
         );
       },
       importsObj: { js: { mem: new WebAssembly.Memory({ initial: 1, maximum: 1 }) } }
@@ -603,7 +598,7 @@ const simList = (() => {
       ]),
       async runner () {
         const { instance } = await this.makeInstance();
-        this.console.log("Wasm legacy exceptions test:", instance.exports.next())
+        this.console.log("Wasm extended constant expressions test:", instance.exports.next())
       },
       importsObj: { js: { global0: new WebAssembly.Global({ value: "i32" }, 1) } }
     }),
@@ -640,13 +635,12 @@ const simList = (() => {
           function_body([], [ i32.const(3) ]),
           function_body([], [
             call_ref(i32,
-              block(
-                ref_null(varuint32(0)),
+              block(ref_null(varuint32(0)),
                 [
-                  br_on_non_null(0, get_local(i32, 0)),
                   return_(call_ref(i32,
                     func_ref(0),
-                    varuint32(0)
+                    varuint32(0),
+                    [ br_on_non_null(0, get_local(i32, 0)) ]
                   ))
                 ]
               ),
@@ -662,6 +656,103 @@ const simList = (() => {
           instance.exports.run_ref(null));
       },
       importsObj: { js: { tbl: new WebAssembly.Table({ initial: 2, maximum: 2, element: "anyfunc" }) } }
+    }),
+
+    new WasmSim({
+      module: module([
+        type_section([
+          rec_type([
+            sub_type([], comp_type(comp.Struct)),                     // List
+            sub_type([ varuint32(0) ], comp_type(comp.Struct), true), // Nil
+            sub_type([ varuint32(0) ],                                // Cons
+              comp_type(comp.Struct, field_type(ref(varuint32(0))), field_type(ref(heap.Any))),
+              true
+            )
+          ]),
+          comp_type(comp.Func, [], [ ref(varuint32(1)) ]),                                   // nil
+          comp_type(comp.Func, [ ref(varuint32(0)), ref(heap.Any) ], [ ref(varuint32(2)) ]), // cons
+          comp_type(comp.Func, [ ref(varuint32(0)), ref(heap.Any), ref(heap.Any) ], [ ref(heap.Any) ]),    // reducer
+          comp_type(comp.Func, [ ref(varuint32(0)), ref(varuint32(5)), ref(heap.Any) ], [ ref(heap.Any) ]) // fold
+        ]),
+        function_section([
+          varuint32(3),
+          varuint32(4),
+          varuint32(6),
+          varuint32(5)
+        ]),
+        table_section([
+          table_init_entry(
+            table_type(ref(heap.Func), resizable_limits(3, 3)),
+            init_expr([ func_ref(3) ])
+          )
+        ]),
+        export_section([
+          export_entry(str_utf8("nil"), external_kind.function, varuint32(0)),
+          export_entry(str_utf8("cons"), external_kind.function, varuint32(1)),
+          export_entry(str_utf8("fold"), external_kind.function, varuint32(2)),
+          export_entry(str_utf8("funcs"), external_kind.table, varuint32(0))
+        ]),
+        code_section([
+          function_body([], [ // nil
+            new_struct(1, [])
+          ]),
+          function_body([], [ // cons
+            new_struct(2, [ get_local(ref(varuint32(0)), 0), get_local(ref(heap.Any), 1) ])
+          ]),
+          function_body([ local_entry(1, ref(varuint32(0))) ], [ // fold
+            drop(void_, block(ref(varuint32(1)), [
+              set_local(3,
+                get_struct(ref(varuint32(0)), 2, 0,
+                  block(ref(varuint32(2)), [
+                    br_on_cast(varuint32(0), varuint32(0), varuint32(2), uint8(0),
+                      br_on_cast(varuint32(1), varuint32(0), varuint32(1), uint8(0),
+                        get_local(ref(varuint32(0)), 0)
+                      )
+                    ),
+                    unreachable
+                  ])
+                )
+              ),
+              return_(
+                call(ref(heap.Any),
+                  varuint32(2),
+                  [
+                    get_local(ref(varuint32(0)), 3),
+                    get_local(ref(varuint32(5)), 1),
+                    call_ref(ref(heap.Any),
+                      get_local(ref(varuint32(5)), 1),
+                      varuint32(5),
+                      [
+                        get_local(ref(varuint32(0)), 3),
+                        get_struct(ref(heap.Any), 2, 1,
+                          cast_ref(varuint32(2),
+                            get_local(ref(varuint32(0)), 0)
+                          )
+                        ),
+                        get_local(ref(heap.Any), 2)
+                      ]
+                    )
+                  ]
+                )
+              )
+            ])),
+            get_local(ref(heap.Any), 2)
+          ]),
+          function_body([], [ // sum
+            i31_ref(i32.add(
+              get_i31_s(cast_ref(heap.I31, get_local(i32, 1))),
+              get_i31_s(cast_ref(heap.I31, get_local(i32, 2)))
+            ))
+          ]),
+        ])
+      ]),
+      async runner () {
+        const
+          { instance } = await this.makeInstance(),
+          { funcs, nil, cons, fold } = instance.exports,
+          reducer = funcs.get(0), list = cons(cons(nil(), 2), 3);
+        this.console.log("Wasm garbage collection test:", fold(list, reducer, 1))
+      }
     })
     
   ]
