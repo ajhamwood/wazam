@@ -177,57 +177,6 @@ const simList = (() => {
     new WasmSim({
       module: module([
         type_section([
-          comp_type(comp.Func, [ i32, i32 ], [ i32 ])
-        ]),
-        import_section([
-          memory_import_entry(
-            str_utf8("js"),
-            str_utf8("mem"),
-            resizable_limits(1, 1)
-          )
-        ]),
-        function_section([
-          varuint32(0)
-        ]),
-        export_section([
-          export_entry(str_utf8("store"), external_kind.function, varuint32(0))
-        ]),
-        code_section([
-          function_body([], [
-            if_(i32,
-              i32.or(
-                i32.lt_u(
-                  i32.ctz(get_local(i32, 0)),
-                  i32.const(2)
-                ),
-                i32.gt_u(
-                  get_local(i32, 0),
-                  i32.const(0xFFFC)
-                ),
-              ),
-              [ i32.const(0) ],
-              [
-                i32.store(align32,
-                  get_local(i32, 0),
-                  get_local(i32, 1)
-                ),
-                i32.const(1)
-              ]
-            )
-          ])
-        ])
-      ]),
-      async runner () {
-        const { instance } = await this.makeInstance();
-        this.console.log("Wasm memory test:", instance.exports.store(0x4, 0xFFFFFFFF),
-          Array.from(new Uint32Array(this.imports.js.mem.buffer.slice(0, 8))));
-      },
-      importsObj: { js: { mem: new WebAssembly.Memory({ initial: 1, maximum: 1 }) } }
-    }),
-
-    new WasmSim({
-      module: module([
-        type_section([
           comp_type(comp.Func, [ f32 ], [ i32 ])
         ]),
         function_section([
@@ -751,6 +700,66 @@ const simList = (() => {
           reducer = funcs.get(0), list = cons(cons(nil(), 2), 3);
         this.console.log("Wasm garbage collection test:", fold(list, reducer, 1))
       }
+    }),
+
+    new WasmSim({
+      module: module([
+        type_section([
+          comp_type(comp.Func, [ i32, i32 ], [ i32 ])
+        ]),
+        import_section([
+          memory_import_entry( str_utf8("js"), str_utf8("mem1"), resizable_limits(1, 1)),
+          memory_import_entry( str_utf8("js"), str_utf8("mem2"), resizable_limits(1, 1))
+        ]),
+        function_section([
+          varuint32(0)
+        ]),
+        export_section([
+          export_entry(str_utf8("multistore"), external_kind.function, varuint32(0))
+        ]),
+        code_section([
+          function_body([], [
+            if_(i32,
+              i32.or(
+                i32.lt_u(
+                  i32.ctz(get_local(i32, 0)),
+                  i32.const(2)
+                ),
+                i32.gt_u(
+                  get_local(i32, 0),
+                  i32.const(0xFFFC)
+                ),
+              ),
+              [ i32.const(0) ],
+              [
+                i32.store(align32,
+                  get_local(i32, 0),
+                  get_local(i32, 1)
+                ),
+                i32.store(align32,
+                  get_local(i32, 0),
+                  i32.mul(
+                    get_local(i32, 1),
+                    i32.const(2)
+                  ),
+                  1
+                ),
+                i32.const(1)
+              ]
+            )
+          ])
+        ])
+      ]),
+      async runner () {
+        const { instance } = await this.makeInstance();
+        this.console.log("Wasm memory test:", instance.exports.multistore(0x4, 0x7FFFFFFF),
+          Array.from(new Uint32Array(this.imports.js.mem1.buffer.slice(0, 8))),
+          Array.from(new Uint32Array(this.imports.js.mem2.buffer.slice(0, 8))));
+      },
+      importsObj: { js: {
+        mem1: new WebAssembly.Memory({ initial: 1, maximum: 1 }),
+        mem2: new WebAssembly.Memory({ initial: 1, maximum: 1 })
+      } }
     })
     
   ]

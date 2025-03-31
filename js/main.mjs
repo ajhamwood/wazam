@@ -4,7 +4,6 @@ import { simList } from "./simlist.mjs"
 const sims = {};
 ([
   sims.fact,
-  sims.mem,
   sims.sat,
   sims.sext,
   sims.bulk,
@@ -15,7 +14,8 @@ const sims = {};
   sims.exn_legacy,
   sims.ext_const,
   sims.func_refs,
-  sims.gc_tailcall
+  sims.gc_tailcall,
+  sims.multi_mem
 ] = simList);
 self.app = new $.Machine({ inView: 0, simList, viewportHeight: null });
 

@@ -513,12 +513,16 @@ function section (id, imm, payload) {
 
 
 const
-  // R : Result => (OpCode, R, MemImm, Op Int) -> Op R
-  memload = (op, r, mi, addr) => new instr_pre_imm(op, r, [addr], mi),
-  memload_lane = (op, r, [a, o], lane, addr) => new instr_pre_imm([0xfd, op], r, [addr], [a, o, lane]),
-  // (OpCode, MemImm, Op Int, Op Result) -> Op Void
-  memstore = (op, mi, addr, v) => new instr_pre_imm(op, Void, [addr, v], mi),
-  memstore_lane = (op, [a, o], lane, addr, v) => new instr_pre_imm([0xfd, op], r, [addr, v], [a, o, lane]),
+  // R : Result => (OpCode, R, MemImm, Op Int, Maybe uint32) -> Op R
+  memload = (op, r, [a, o], addr, memoryIndex) => new instr_pre_imm(op, r, [addr], memoryIndex ?
+    [ new u8_atom(T.varuint32, a.v + 0x40), varuint32(memoryIndex), o ] : [a, o]),
+  memload_lane = (op, r, [a, o], lane, addr, memoryIndex) => new instr_pre_imm([0xfd, op], r, [addr], memoryIndex ?
+    [ new u8_atom(T.varuint32, a.v + 0x40), varuint32(memoryIndex), o, lane ] : [a, o, lane]),
+  // (OpCode, MemImm, Op Int, Op Result, Maybe uint32) -> Op Void
+  memstore = (op, [a, o], addr, v, memoryIndex) => new instr_pre_imm(op, Void, [addr, v], memoryIndex ?
+    [ new u8_atom(T.varuint32, a.v + 0x40), varuint32(memoryIndex), o ] : [a, o]),
+  memstore_lane = (op, [a, o], lane, addr, v, memoryIndex) => new instr_pre_imm([0xfd, op], r, [addr, v], memoryIndex ?
+    [ new u8_atom(T.varuint32, a.v + 0x40), varuint32(memoryIndex), o, lane ] :  [a, o, lane]),
 
   // R : Result => (OpCode, R, Op R) -> Op R
   unop = (op, r, v) => new instr_pre1(op, r, v),
@@ -550,14 +554,14 @@ class i32ops extends type_atom {
   const (v) { return this.constv(varint32(v)) }                                   // int32 -> Op I32
 
   // Memory
-  load (mi, addr) { return memload([0x28], this, mi, addr) }                      // (MemImm, Op Int) -> Op I32
-  load8_s (mi, addr) { return memload([0x2c], this, mi, addr) }                   // (MemImm, Op Int) -> Op I32
-  load8_u (mi, addr) { return memload([0x2d], this, mi, addr) }                   // (MemImm, Op Int) -> Op I32
-  load16_s (mi, addr) { return memload([0x2e], this, mi, addr) }                  // (MemImm, Op Int) -> Op I32
-  load16_u (mi, addr) { return memload([0x2f], this, mi, addr) }                  // (MemImm, Op Int) -> Op I32
-  store (mi, addr, v) { return memstore([0x36], mi, addr, v) }                    // (MemImm, Op Int, Op I32) -> Op Void
-  store8 (mi, addr, v) { return memstore([0x3a], mi, addr, v) }                   // (MemImm, Op Int, Op I32) -> Op Void
-  store16 (mi, addr, v) { return memstore([0x3b], mi, addr, v) }                  // (MemImm, Op Int, Op I32) -> Op Void
+  load (mi, addr, memidx) { return memload([0x28], this, mi, addr, memidx) }      // (MemImm, Op Int, Maybe uint32) -> Op I32
+  load8_s (mi, addr, memidx) { return memload([0x2c], this, mi, addr, memidx) }   // (MemImm, Op Int, Maybe uint32) -> Op I32
+  load8_u (mi, addr, memidx) { return memload([0x2d], this, mi, addr, memidx) }   // (MemImm, Op Int, Maybe uint32) -> Op I32
+  load16_s (mi, addr, memidx) { return memload([0x2e], this, mi, addr, memidx) }  // (MemImm, Op Int, Maybe uint32) -> Op I32
+  load16_u (mi, addr, memidx) { return memload([0x2f], this, mi, addr, memidx) }  // (MemImm, Op Int, Maybe uint32) -> Op I32
+  store (mi, addr, v, memidx) { return memstore([0x36], mi, addr, v, memidx) }    // (MemImm, Op Int, Op I32, Maybe uint32) -> Op Void
+  store8 (mi, addr, v, memidx) { return memstore([0x3a], mi, addr, v, memidx) }   // (MemImm, Op Int, Op I32, Maybe uint32) -> Op Void
+  store16 (mi, addr, v, memidx) { return memstore([0x3b], mi, addr, v, memidx) }  // (MemImm, Op Int, Op I32, Maybe uint32) -> Op Void
   addrIsAligned (mi, addr) { return addrIsAligned(2, mi[0].v, mi[1].v, addr) }    // (MemImm, number) -> boolean
 
   // Comparison
@@ -612,12 +616,12 @@ class i32ops extends type_atom {
   extend16_s (a) { return new instr_pre1([0xc1], this, a) }                       // Op I32 -> Op I32
 
   // Atomic operations
-  atomic_load (mi, addr) { return memload([0xfe, 16], this, mi, addr) }           // (MemImm, Op Int) -> Op I32
-  atomic_load8_u (mi, addr) { return memload([0xfe, 18], this, mi, addr) }        // (MemImm, Op Int) -> Op I32
-  atomic_load16_u (mi, addr) { return memload([0xfe, 19], this, mi, addr) }       // (MemImm, Op Int) -> Op I32
-  atomic_store (mi, addr, v) { return memstore([0xfe, 23], mi, addr, v) }         // (MemImm, Op Int, Op I32) -> Op Void
-  atomic_store8_u (mi, addr, v) { return memstore([0xfe, 25], mi, addr, v) }      // (MemImm, Op Int, Op I32) -> Op Void
-  atomic_store16_u (mi, addr, v) { return memstore([0xfe, 26], mi, addr, v) }     // (MemImm, Op Int, Op I32) -> Op Void
+  atomic_load (mi, addr, memidx) { return memload([0xfe, 16], this, mi, addr, memidx) }       // (MemImm, Op Int, Maybe uint32) -> Op I32
+  atomic_load8_u (mi, addr, memidx) { return memload([0xfe, 18], this, mi, addr, memidx) }    // (MemImm, Op Int, Maybe uint32) -> Op I32
+  atomic_load16_u (mi, addr, memidx) { return memload([0xfe, 19], this, mi, addr, memidx) }   // (MemImm, Op Int, Maybe uint32) -> Op I32
+  atomic_store (mi, addr, v, memidx) { return memstore([0xfe, 23], mi, addr, v, memidx) }     // (MemImm, Op Int, Op I32, Maybe uint32) -> Op Void
+  atomic_store8_u (mi, addr, v, memidx) { return memstore([0xfe, 25], mi, addr, v, memidx) }  // (MemImm, Op Int, Op I32, Maybe uint32) -> Op Void
+  atomic_store16_u (mi, addr, v, memidx) { return memstore([0xfe, 26], mi, addr, v, memidx) } // (MemImm, Op Int, Op I32, Maybe uint32) -> Op Void
 
   atomic_add (mi, addr, v) { return rmw_atomic(30, this, mi, addr, v) }           // (MemImm, Op Int, Op I32) -> Op I32
   atomic_add8_u (mi, addr, v) { return rmw_atomic(32, this, mi, addr, v) }        // (MemImm, Op Int, Op I32) -> Op I32
@@ -652,17 +656,17 @@ class i64ops extends type_atom {
   const (v) { return this.constv(varint64(BigInt(v))) }                           // int64 -> Op I64
 
   // Memory
-  load (mi, addr) { return memload([0x29], this, mi, addr) }                      // (MemImm, Op Int) -> Op I64
-  load8_s (mi, addr) { return memload([0x30], this, mi, addr) }                   // (MemImm, Op Int) -> Op I64
-  load8_u (mi, addr) { return memload([0x31], this, mi, addr) }                   // (MemImm, Op Int) -> Op I64
-  load16_s (mi, addr) { return memload([0x32], this, mi, addr) }                  // (MemImm, Op Int) -> Op I64
-  load16_u (mi, addr) { return memload([0x33], this, mi, addr) }                  // (MemImm, Op Int) -> Op I64
-  load32_s (mi, addr) { return memload([0x34], this, mi, addr) }                  // (MemImm, Op Int) -> Op I64
-  load32_u (mi, addr) { return memload([0x35], this, mi, addr) }                  // (MemImm, Op Int) -> Op I64
-  store (mi, addr, v) { return memstore([0x37], mi, addr, v) }                    // (MemImm, Op Int, Op I64) -> Op Void
-  store8 (mi, addr, v) { return memstore([0x3c], mi, addr, v) }                   // (MemImm, Op Int, Op I64) -> Op Void
-  store16 (mi, addr, v) { return memstore([0x3d], mi, addr, v) }                  // (MemImm, Op Int, Op I64) -> Op Void
-  store32 (mi, addr, v) { return memstore([0x3e], mi, addr, v) }                  // (MemImm, Op Int, Op I64) -> Op Void
+  load (mi, addr, memidx) { return memload([0x29], this, mi, addr, memidx) }      // (MemImm, Op Int, Maybe uint32) -> Op I64
+  load8_s (mi, addr, memidx) { return memload([0x30], this, mi, addr, memidx) }   // (MemImm, Op Int, Maybe uint32) -> Op I64
+  load8_u (mi, addr, memidx) { return memload([0x31], this, mi, addr, memidx) }   // (MemImm, Op Int, Maybe uint32) -> Op I64
+  load16_s (mi, addr, memidx) { return memload([0x32], this, mi, addr, memidx) }  // (MemImm, Op Int, Maybe uint32) -> Op I64
+  load16_u (mi, addr, memidx) { return memload([0x33], this, mi, addr, memidx) }  // (MemImm, Op Int, Maybe uint32) -> Op I64
+  load32_s (mi, addr, memidx) { return memload([0x34], this, mi, addr, memidx) }  // (MemImm, Op Int, Maybe uint32) -> Op I64
+  load32_u (mi, addr, memidx) { return memload([0x35], this, mi, addr, memidx) }  // (MemImm, Op Int, Maybe uint32) -> Op I64
+  store (mi, addr, v, memidx) { return memstore([0x37], mi, addr, v, memidx) }    // (MemImm, Op Int, Op I64, Maybe uint32) -> Op Void
+  store8 (mi, addr, v, memidx) { return memstore([0x3c], mi, addr, v, memidx) }   // (MemImm, Op Int, Op I64, Maybe uint32) -> Op Void
+  store16 (mi, addr, v, memidx) { return memstore([0x3d], mi, addr, v, memidx) }  // (MemImm, Op Int, Op I64, Maybe uint32) -> Op Void
+  store32 (mi, addr, v, memidx) { return memstore([0x3e], mi, addr, v, memidx) }  // (MemImm, Op Int, Op I64, Maybe uint32) -> Op Void
   addrIsAligned (mi, addr) { return addrIsAligned(3, mi[0].v, mi[1].v, addr) }    // (MemImm, number) -> boolean
 
   // Comparison
@@ -719,14 +723,14 @@ class i64ops extends type_atom {
   extend32_s (a) { return new instr_pre1([0xc4], this, a) }                       // Op I64 -> Op I64
 
   // Atomic operations
-  atomic_load (mi, addr) { return memload([0xfe, 17], this, mi, addr) }           // (MemImm, Op Int) -> Op I32
-  atomic_load8_u (mi, addr) { return memload([0xfe, 20], this, mi, addr) }        // (MemImm, Op Int) -> Op I32
-  atomic_load16_u (mi, addr) { return memload([0xfe, 21], this, mi, addr) }       // (MemImm, Op Int) -> Op I32
-  atomic_load32_u (mi, addr) { return memload([0xfe, 22], this, mi, addr) }       // (MemImm, Op Int) -> Op I32
-  atomic_store (mi, addr, v) { return memstore([0xfe, 24], mi, addr, v) }         // (MemImm, Op Int, Op I32) -> Op Void
-  atomic_store8_u (mi, addr, v) { return memstore([0xfe, 27], mi, addr, v) }      // (MemImm, Op Int, Op I32) -> Op Void
-  atomic_store16_u (mi, addr, v) { return memstore([0xfe, 28], mi, addr, v) }     // (MemImm, Op Int, Op I32) -> Op Void
-  atomic_store32_u (mi, addr, v) { return memstore([0xfe, 29], mi, addr, v) }     // (MemImm, Op Int, Op I32) -> Op Void
+  atomic_load (mi, addr, memidx) { return memload([0xfe, 17], this, mi, addr, memidx) }       // (MemImm, Op Int, Maybe uint32) -> Op I32
+  atomic_load8_u (mi, addr, memidx) { return memload([0xfe, 20], this, mi, addr, memidx) }    // (MemImm, Op Int, Maybe uint32) -> Op I32
+  atomic_load16_u (mi, addr, memidx) { return memload([0xfe, 21], this, mi, addr, memidx) }   // (MemImm, Op Int, Maybe uint32) -> Op I32
+  atomic_load32_u (mi, addr, memidx) { return memload([0xfe, 22], this, mi, addr, memidx) }   // (MemImm, Op Int, Maybe uint32) -> Op I32
+  atomic_store (mi, addr, v, memidx) { return memstore([0xfe, 24], mi, addr, v, memidx) }     // (MemImm, Op Int, Op I32, Maybe uint32) -> Op Void
+  atomic_store8_u (mi, addr, v, memidx) { return memstore([0xfe, 27], mi, addr, v, memidx) }  // (MemImm, Op Int, Op I32, Maybe uint32) -> Op Void
+  atomic_store16_u (mi, addr, v, memidx) { return memstore([0xfe, 28], mi, addr, v, memidx) } // (MemImm, Op Int, Op I32, Maybe uint32) -> Op Void
+  atomic_store32_u (mi, addr, v, memidx) { return memstore([0xfe, 29], mi, addr, v, memidx) } // (MemImm, Op Int, Op I32, Maybe uint32) -> Op Void
 
   atomic_add (mi, addr, v) { return rmw_atomic(31, this, mi, addr, v) }           // (MemImm, Op Int, Op I32) -> Op I32
   atomic_add8_u (mi, addr, v) { return rmw_atomic(34, this, mi, addr, v) }        // (MemImm, Op Int, Op I32) -> Op I32
@@ -769,8 +773,8 @@ class f32ops extends type_atom {
   const (v) { return this.constv(float32(v)) }                                    // float32 -> Op F32
 
   // Memory
-  load (mi, addr) { return memload([0x2a], this, mi, addr) }                      // (MemImm, Op Int) -> F32
-  store (mi, addr, v) { return memstore([0x38], mi, addr, v) }                    // (MemImm, Op Int, Op F32) -> Op Void
+  load (mi, addr, memidx) { return memload([0x2a], this, mi, addr, memidx) }      // (MemImm, Op Int, Maybe uint32) -> F32
+  store (mi, addr, v, memidx) { return memstore([0x38], mi, addr, v, memidx) }    // (MemImm, Op Int, Op F32, Maybe uint32) -> Op Void
   addrIsAligned (mi, addr) { return addrIsAligned(2, mi[0].v, mi[1].v, addr) }    // (MemImm, number) -> boolean
 
   // Comparison
@@ -813,8 +817,8 @@ class f64ops extends type_atom {
   const (v) { return this.constv(float64(v)) }                                    // float64 -> Op F64
 
   // Memory
-  load (mi, addr) { return memload([0x2b], this, mi, addr) }                      // (MemImm, Op Int) -> F64
-  store (mi, addr, v) { return memstore([0x39], mi, addr, v) }                    // (MemImm, Op Int, Op F64) -> Op Void
+  load (mi, addr, memidx) { return memload([0x2b], this, mi, addr, memidx) }      // (MemImm, Op Int, Maybe uint32) -> F64
+  store (mi, addr, v, memidx) { return memstore([0x39], mi, addr, v, memidx) }    // (MemImm, Op Int, Op F64, Maybe uint32) -> Op Void
   addrIsAligned (mi, addr) { return addrIsAligned(3, mi[0].v, mi[1].v, addr) }    // (MemImm, number) -> boolean
 
   // Comparison
@@ -857,28 +861,28 @@ class v128ops extends type_atom {
   const (v) { return new instr_imm1([0xfd, 12], this, v) }
 
   // Memory
-  load (mi, addr) { return memload([0xfd, 0], this, mi, addr) }                   // (MemImm, Op Int) -> Op V128
-  load8x8_s (mi, addr) { return memload([0xfd, 1], this, mi, addr) }              // (MemImm, Op Int) -> Op V128
-  load8x8_u (mi, addr) { return memload([0xfd, 2], this, mi, addr) }              // (MemImm, Op Int) -> Op V128
-  load16x4_s (mi, addr) { return memload([0xfd, 3], this, mi, addr) }             // (MemImm, Op Int) -> Op V128
-  load16x4_u (mi, addr) { return memload([0xfd, 4], this, mi, addr) }             // (MemImm, Op Int) -> Op V128
-  load32x2_s (mi, addr) { return memload([0xfd, 5], this, mi, addr) }             // (MemImm, Op Int) -> Op V128
-  load32x2_u (mi, addr) { return memload([0xfd, 6], this, mi, addr) }             // (MemImm, Op Int) -> Op V128
-  load8_splat (mi, addr) { return memload([0xfd, 7], this, mi, addr) }            // (MemImm, Op Int) -> Op V128
-  load16_splat (mi, addr) { return memload([0xfd, 8], this, mi, addr) }           // (MemImm, Op Int) -> Op V128
-  load32_splat (mi, addr) { return memload([0xfd, 9], this, mi, addr) }           // (MemImm, Op Int) -> Op V128
-  load64_splat (mi, addr) { return memload([0xfd, 10], this, mi, addr) }          // (MemImm, Op Int) -> Op V128
-  load8_lane (mi, lane, addr) { return memload_lane(84, this, mi, lane, addr) }   // (MemImm, uint8, Op Int) -> Op V128
-  load16_lane (mi, lane, addr) { return memload_lane(85, this, mi, lane, addr) }  // (MemImm, uint8, Op Int) -> Op V128
-  load32_lane (mi, lane, addr) { return memload_lane(86, this, mi, lane, addr) }  // (MemImm, uint8, Op Int) -> Op V128
-  load64_lane (mi, lane, addr) { return memload_lane(87, this, mi, lane, addr) }  // (MemImm, uint8, Op Int) -> Op V128
-  load32_zero (mi, addr) { return memload(92, this, mi, addr) }                   // (MemImm, Op Int) -> Op V128
-  load64_zero (mi, addr) { return memload(93, this, mi, addr) }                   // (MemImm, Op Int) -> Op V128
-  store (mi, addr, v) { return memstore([0xfd, 11], mi, addr, v) }                // (MemImm, Op Int, Op V128) -> Op Void
-  store8_lane (mi, lane, addr, v) { return memstore_lane(88, mi, lane, addr, v) }  // (MemImm, uint8, Op Int, Op I32) -> Op Void
-  store16_lane (mi, lane, addr, v) { return memstore_lane(89, mi, lane, addr, v) } // (MemImm, uint8, Op Int, Op I32) -> Op Void
-  store32_lane (mi, lane, addr, v) { return memstore_lane(90, mi, lane, addr, v) } // (MemImm, uint8, Op Int, Op I32 | Op F32) -> Op Void
-  store64_lane (mi, lane, addr, v) { return memstore_lane(91, mi, lane, addr, v) } // (MemImm, uint8, Op Int, Op I64 | Op F64) -> Op Void
+  load (mi, addr, memidx) { return memload([0xfd, 0], this, mi, addr, memidx) }                   // (MemImm, Op Int, Maybe uint32) -> Op V128
+  load8x8_s (mi, addr, memidx) { return memload([0xfd, 1], this, mi, addr, memidx) }              // (MemImm, Op Int, Maybe uint32) -> Op V128
+  load8x8_u (mi, addr, memidx) { return memload([0xfd, 2], this, mi, addr, memidx) }              // (MemImm, Op Int, Maybe uint32) -> Op V128
+  load16x4_s (mi, addr, memidx) { return memload([0xfd, 3], this, mi, addr, memidx) }             // (MemImm, Op Int, Maybe uint32) -> Op V128
+  load16x4_u (mi, addr, memidx) { return memload([0xfd, 4], this, mi, addr, memidx) }             // (MemImm, Op Int, Maybe uint32) -> Op V128
+  load32x2_s (mi, addr, memidx) { return memload([0xfd, 5], this, mi, addr, memidx) }             // (MemImm, Op Int, Maybe uint32) -> Op V128
+  load32x2_u (mi, addr, memidx) { return memload([0xfd, 6], this, mi, addr, memidx) }             // (MemImm, Op Int, Maybe uint32) -> Op V128
+  load8_splat (mi, addr, memidx) { return memload([0xfd, 7], this, mi, addr, memidx) }            // (MemImm, Op Int, Maybe uint32) -> Op V128
+  load16_splat (mi, addr, memidx) { return memload([0xfd, 8], this, mi, addr, memidx) }           // (MemImm, Op Int, Maybe uint32) -> Op V128
+  load32_splat (mi, addr, memidx) { return memload([0xfd, 9], this, mi, addr, memidx) }           // (MemImm, Op Int, Maybe uint32) -> Op V128
+  load64_splat (mi, addr, memidx) { return memload([0xfd, 10], this, mi, addr, memidx) }          // (MemImm, Op Int, Maybe uint32) -> Op V128
+  load8_lane (mi, lane, addr, memidx) { return memload_lane(84, this, mi, lane, addr, memidx) }   // (MemImm, uint8, Op Int, Maybe uint32) -> Op V128
+  load16_lane (mi, lane, addr, memidx) { return memload_lane(85, this, mi, lane, addr, memidx) }  // (MemImm, uint8, Op Int, Maybe uint32) -> Op V128
+  load32_lane (mi, lane, addr, memidx) { return memload_lane(86, this, mi, lane, addr, memidx) }  // (MemImm, uint8, Op Int, Maybe uint32) -> Op V128
+  load64_lane (mi, lane, addr, memidx) { return memload_lane(87, this, mi, lane, addr, memidx) }  // (MemImm, uint8, Op Int, Maybe uint32) -> Op V128
+  load32_zero (mi, addr, memidx) { return memload(92, this, mi, addr, memidx) }                   // (MemImm, Op Int, Maybe uint32) -> Op V128
+  load64_zero (mi, addr, memidx) { return memload(93, this, mi, addr, memidx) }                   // (MemImm, Op Int, Maybe uint32) -> Op V128
+  store (mi, addr, v, memidx) { return memstore([0xfd, 11], mi, addr, v, memidx) }                // (MemImm, Op Int, Op V128, Maybe uint32) -> Op Void
+  store8_lane (mi, lane, addr, v, memidx) { return memstore_lane(88, mi, lane, addr, v, memidx) }  // (MemImm, uint8, Op Int, Op I32, Maybe uint32) -> Op Void
+  store16_lane (mi, lane, addr, v, memidx) { return memstore_lane(89, mi, lane, addr, v, memidx) } // (MemImm, uint8, Op Int, Op I32, Maybe uint32) -> Op Void
+  store32_lane (mi, lane, addr, v, memidx) { return memstore_lane(90, mi, lane, addr, v, memidx) } // (MemImm, uint8, Op Int, Op I32 | Op F32, Maybe uint32) -> Op Void
+  store64_lane (mi, lane, addr, v, memidx) { return memstore_lane(91, mi, lane, addr, v, memidx) } // (MemImm, uint8, Op Int, Op I64 | Op F64, Maybe uint32) -> Op Void
 
   // Bitwise operations
   not (a) { return unop([0xfd, 77], this, a) }                                    // Op V128 -> Op V128
@@ -1289,8 +1293,8 @@ const
     // Data -> DataSegment
     passive_data_segment: data => new cell(T.data_segment, [ varuint32(1), data ]),
     // (InitExpr, Data, Maybe VarUint32) -> DataSegment
-    active_data_segment: (offset, data, memid) => new cell(T.data_segment,
-      memid ? [ varuint32(2), memid, offset, data ] : [ varuint32(0), offset, data ]),
+    active_data_segment: (offset, data, memoryIndex) => new cell(T.data_segment,
+      memoryIndex ? [ varuint32(2), memoryIndex, offset, data ] : [ varuint32(0), offset, data ]),
 
     // ([ValueType], [ValueType]) -> FuncType
     func_type: (paramTypes = [], returnType = []) => new cell(T.func_type, 
@@ -1453,13 +1457,13 @@ const
     set_global: (globalIndex, expr) => new instr_pre_imm([0x24], Void, [ expr ], [ varuint32(globalIndex) ]),
 
     // Memory
-    // () -> Op Int
-    size_memory: () => new instr_imm1([0x3f], c.i32, varuint1_0),
+    // Maybe uint32 -> Op Int
+    size_memory: (memoryIndex = 0) => new instr_imm1([0x3f], c.i32, varuint32(memoryIndex)),
     // Grows the size of memory by "delta" memory pages, returns the previous memory size in pages, or -1 on failure.
-    // Op Int -> Op Int
-    grow_memory: delta => {
+    // (Op Int, Maybe uint32) -> Op Int
+    grow_memory: (delta, memoryIndex = 0) => {
       assert(delta.v >= 0, "delta.v", delta.v, "< 0");
-      return new instr_pre_imm([0x40], c.i32, [ delta ], [ varuint1_0 ]) },
+      return new instr_pre_imm([0x40], c.i32, [ delta ], [ varuint32(memoryIndex) ]) },
     // MemImm, as [ alignment, offset ]
     align8:  [ varUint32Cache[0], varUint32Cache[0] ],  // [ VarUint32, Int ]
     align16: [ varUint32Cache[1], varUint32Cache[0] ],  // [ VarUint32, Int ]
@@ -1467,17 +1471,17 @@ const
     align64: [ varUint32Cache[3], varUint32Cache[0] ],  // [ VarUint32, Int ]
 
     // Bulk memory operations
-    // (uint32, Op I32, Op I32, Op I32) -> Op Void
-    init_memory: (seg, size, offset, dest) =>
-      new instr_pre_imm([0xfc, 8], Void, [ dest, offset, size ], [ varuint32(seg), varuint1_0 ]),
+    // (uint32, Op I32, Op I32, Op I32, Maybe uint32) -> Op Void
+    init_memory: (seg, size, offset, dest, memoryIndex = 0) =>
+      new instr_pre_imm([0xfc, 8], Void, [ dest, offset, size ], [ varuint32(seg), varuint32(memoryIndex) ]),
     // uint32 -> Op Void
     drop_data: seg => new instr_imm1([0xfc, 9], Void, varuint32(seg)),
-    // (Op I32, Op I32, Op I32) -> Op Void
-    copy_memory: (dest, offset, size) =>
-      new instr_pre_imm([0xfc, 10], Void, [ dest, offset, size ], [ varuint1_0, varuint1_0 ]),
-    // (Op I32, Op I32, Op I32) -> Op Void
-    fill_memory: (dest, byteVal, size) =>
-      new instr_pre_imm([0xfc, 11], Void, [ dest, byteVal, size ], [ varuint1_0 ]),
+    // (Op I32, Op I32, Op I32, Maybe uint32, Maybe uint32) -> Op Void
+    copy_memory: (dest, offset, size, memoryIndex1 = 0, memoryIndex2 = 0) =>
+      new instr_pre_imm([0xfc, 10], Void, [ dest, offset, size ], [ varuint32(memoryIndex1), varuint32(memoryIndex2) ]),
+    // (Op I32, Op I32, Op I32, Maybe uint32) -> Op Void
+    fill_memory: (dest, byteVal, size, memoryIndex = 0) =>
+      new instr_pre_imm([0xfc, 11], Void, [ dest, byteVal, size ], [ varuint32(memoryIndex) ]),
     // Result R => (VarUint32, Op I32) -> Op R
     get_table: (tableIndex, offset) =>
       new instr_pre_imm([0x25], ref(Comp.Func), [ offset ], [ varuint32(tableIndex) ]),
