@@ -18,7 +18,7 @@ WebAssembly extensions
   - [x] (FF112) Extended constant expressions
   - [x] (FF120) Typed function references
   - [x] (FF120) Garbage collection
-  - [ ] (FF121) Tail calls
+  - [x] (FF121) Tail calls
   - [ ] (FF125) Multi-memory
   - [ ] (FF131) Exception handling with exnref
   - [ ] (FF134) JS string builtins

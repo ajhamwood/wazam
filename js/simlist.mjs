@@ -127,7 +127,7 @@ const simList = (() => {
     active_elem_segment, passive_elem_segment, declarative_elem_segment, active_data_segment, passive_data_segment,
     rec_type, sub_type, comp_type, func_type, field_type, table_type, table_init_entry, global_type, tag_type, resizable_limits, global_variable, init_expr, elem_expr_func, elem_expr_null, function_body, local_entry,
     unreachable, nop, block, void_block, loop, void_loop, if_, void_if, end, br, br_if, br_table, br_on_null, br_on_non_null, br_on_cast, br_on_cast_fail,
-    try_catch, catch_clause, try_delegate, throw_, rethrow, return_, return_void, return_multi, return_call_ref, call, call_indirect, call_ref, drop, select,
+    try_catch, catch_clause, try_delegate, throw_, rethrow, return_, return_void, return_multi, return_call_ref, return_call, return_call_indirect, call, call_indirect, call_ref, drop, select,
     get_local, set_local, tee_local, get_global, set_global,
     size_memory, grow_memory, init_memory, drop_data, copy_memory, fill_memory, init_table, drop_elem, copy_table, grow_table, size_table, fill_table, set_table, get_table,
     null_ref, is_null_ref, func_ref, eq_ref, as_non_null_ref,
@@ -682,7 +682,7 @@ const simList = (() => {
         ]),
         table_section([
           table_init_entry(
-            table_type(ref(heap.Func), resizable_limits(3, 3)),
+            table_type(ref(heap.Func), resizable_limits(1, 1)),
             init_expr([ func_ref(3) ])
           )
         ]),
@@ -713,27 +713,25 @@ const simList = (() => {
                   ])
                 )
               ),
-              return_(
-                call(ref(heap.Any),
-                  varuint32(2),
-                  [
-                    get_local(ref(varuint32(0)), 3),
+              return_call(ref(heap.Any),
+                varuint32(2),
+                [
+                  get_local(ref(varuint32(0)), 3),
+                  get_local(ref(varuint32(5)), 1),
+                  call_ref(ref(heap.Any),
                     get_local(ref(varuint32(5)), 1),
-                    call_ref(ref(heap.Any),
-                      get_local(ref(varuint32(5)), 1),
-                      varuint32(5),
-                      [
-                        get_local(ref(varuint32(0)), 3),
-                        get_struct(ref(heap.Any), 2, 1,
-                          cast_ref(varuint32(2),
-                            get_local(ref(varuint32(0)), 0)
-                          )
-                        ),
-                        get_local(ref(heap.Any), 2)
-                      ]
-                    )
-                  ]
-                )
+                    varuint32(5),
+                    [
+                      get_local(ref(varuint32(0)), 3),
+                      get_struct(ref(heap.Any), 2, 1,
+                        cast_ref(varuint32(2),
+                          get_local(ref(varuint32(0)), 0)
+                        )
+                      ),
+                      get_local(ref(heap.Any), 2)
+                    ]
+                  )
+                ]
               )
             ])),
             get_local(ref(heap.Any), 2)

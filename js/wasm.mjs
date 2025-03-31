@@ -1409,16 +1409,23 @@ const
     return_void: new instr_atom(0x0f, Void),  // Op Void
     // Result R => [Op R] -> [Op R]
     return_multi: values => new instr_pre([0x0f], values.map(v => v.r), values),
-    // Result R => Ref R -> Op Void
-    return_call_ref: (r, reference) => new instr_pre([0x15], r, reference),
+    // Result R => (R, VarUint32, [AnyOp]) -> Op Void
+    return_call: (r, funcIndex, args = []) => new instr_pre_imm([0x12], r, args, [ funcIndex ]),
+    // Result R => (R, VarUint32, VarUint32, [AnyOp]) -> Op Void
+    return_call_indirect: (r, tableIndex, typeIndex, args = []) =>
+      new instr_pre_imm([0x13], r, args, [ tableIndex, typeIndex ]),
+    // Result R => (R, Ref R, VarUint32, [AnyOp]) -> Op Void
+    return_call_ref: (r, reference, typeIndex, args = []) =>
+      new instr_pre_imm([0x15], r, [ ...args, reference ], [ typeIndex ]),
     // Calling
     // Result R => (R, VarUint32, [AnyOp]) -> Op R
     call: (r, funcIndex, args = []) => new instr_pre_imm([0x10], r, args, [ funcIndex ]),
-    // Result R => (R,  InitExpr, VarUint32, VarUint32, [AnyOp]) -> Op R
+    // Result R => (R, InitExpr, VarUint32, VarUint32, [AnyOp]) -> Op R
     call_indirect: (r, offset, funcIndex, typeIndex, args = []) =>
       new instr_pre_imm([0x11], r, [ ...args, offset ], [ typeIndex, funcIndex ]),
-    // Result R => (R,  Ref R, VarUint32, [AnyOp]) -> Op Void
-    call_ref: (r, reference, typeIndex, args = []) => new instr_pre_imm([0x14], r, [ ...args, reference ], [ typeIndex ]),
+    // Result R => (R, Ref R, VarUint32, [AnyOp]) -> Op Void
+    call_ref: (r, reference, typeIndex, args = []) =>
+      new instr_pre_imm([0x14], r, [ ...args, reference ], [ typeIndex ]),
 
     // Drop discards the value of its operand
     // R should be the value "under" the operand on the stack
@@ -1645,6 +1652,8 @@ const
     [ 0xf, "return" ],
     [ 0x10, "call" ],
     [ 0x11, "call_indirect" ],
+    [ 0x12, "return_call" ],
+    [ 0x13, "return_call_indirectk" ],
     [ 0x14, "call_ref" ],
     [ 0x15, "return_call_ref" ],
     [ 0x18, "delegate" ],
