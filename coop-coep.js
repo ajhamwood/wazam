@@ -8,6 +8,7 @@ self.addEventListener("fetch", e => {
         const { status, statusText } = resp, headers = new Headers(resp.headers);
         headers.set("Cross-Origin-Embedder-Policy", "require-corp");
         headers.set("Cross-Origin-Opener-Policy", "same-origin");
+        headers.set("Permissions-Policy", "cross-origin-isolated=self");
         return new Response(resp.body, { status, statusText, headers })
       })
       .catch(err => console.error(err))

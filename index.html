@@ -61,10 +61,10 @@
         <a href="https://github.com/WebAssembly/threads/blob/main/proposals/threads/Overview.md">Proposal</a>
       </p>
     </wasm-sim>
-    <wasm-sim id="simd">
-      <h1 slot="title">SIMD</h1>
+    <wasm-sim id="simd_all">
+      <h1 slot="title">SIMD, Relaxed SIMD</h1>
       <p>
-        <a href="https://github.com/WebAssembly/simd/blob/main/proposals/simd/SIMD.md">Proposal</a>
+        <a href="https://github.com/WebAssembly/simd/blob/main/proposals/simd/SIMD.md">SIMD proposal</a>, <a href="https://github.com/WebAssembly/relaxed-simd/blob/main/proposals/relaxed-simd/Overview.md">Relaxed SIMD proposal</a>
       </p>
     </wasm-sim>
     <wasm-sim id="exn_legacy">
@@ -91,7 +91,7 @@
         <a href="https://github.com/WebAssembly/gc/blob/main/proposals/gc/Overview.md">GC proposal</a>, <a href="https://github.com/WebAssembly/tail-call/blob/main/proposals/tail-call/Overview.md">Tail call proposal</a>
       </p>
     </wasm-sim>
-    <wasm-sim id="multi_mem">
+    <wasm-sim id="multi_mem64">
       <h1 slot="title">Multi-memory, Memory64</h1>
       <p>
         <a href="https://github.com/WebAssembly/multi-memory/blob/main/proposals/multi-memory/Overview.md">Multi-memory proposal</a>, <a href="https://github.com/WebAssembly/memory64/blob/main/proposals/memory64/Overview.md">Memory64 proposal</a>
@@ -114,6 +114,7 @@
     <style>
 @media (prefers-color-scheme: dark) {
   article > :is(.text-repr, .buffer-repr, .console) { background-color: #fff3 } }
+@supports selector(::-webkit-scrollbar) { article > * { scrollbar-width: thin } }
 button {
   display: flex;
   align-items: center;
@@ -128,13 +129,13 @@ article {
   grid-template-columns: repeat(2, 1fr);
   grid-template-rows: min-content 10lvh auto max(20lvh, 4em) max(5lvh, 2em) 10lvh }
   .article-title, .article-copy, .console, .controls { grid-column: span 2 }
-  .article-copy { overflow-y: scroll }
+  .article-copy, .buffer-repr, .console { overflow-y: auto }
+  .text-repr { overflow: auto }
   .text-repr, .buffer-repr, .console {
     font-family: Aloha, monospace;
     margin: 1rem;
     background-color: #0003;
-    padding: .3rem;
-    overflow: scroll }
+    padding: .3rem }
   .text-repr {
     white-space: pre }
   .buffer-repr {

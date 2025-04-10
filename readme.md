@@ -23,7 +23,7 @@ WebAssembly extensions
   - [x] (FF131) Exception handling with exnref
   - [x] (FF134) JS string builtins
   - [x] (FF134) Memory64
-  - [ ] (?) Relaxed SIMD
+  - [x] (?) Relaxed SIMD
 
 Wazam features
 

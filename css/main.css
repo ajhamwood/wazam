@@ -16,46 +16,51 @@
     background-color: black;
     color: #ddd }
     body > header { background-color: #fff3 } }
-
+@supports selector(::-webkit-scrollbar) { html, body { scrollbar-width: thin } }
 html, body {
   margin: 0;
-  padding: 0 }
+  padding: 0;
+  scroll-behavior: smooth;
+  scroll-snap-type: y mandatory }
 body, button { font-family: Aloha, "STIX Two Math" }
 body {
   background-color: white;
   color: #222 }
-header {
-  margin: 0;
-  height: 50lvh;
-  background-color: #0003 }
-  header > h1 {
+  header {
     margin: 0;
-    width: fit-content;
-    max-width: 80lvw;
-    position: relative;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%) }
+    height: 50lvh;
+    background-color: #0003 }
+    header > h1 {
+      margin: 0;
+      width: fit-content;
+      max-width: 80lvw;
+      position: relative;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%) }
+  header, wasm-sim { scroll-snap-align: start }
 main {
   display: flex;
   flex-direction: column;
   align-items: center }
-nav {
-  position: fixed;
-  top: 1em;
-  right: 1em;
-  display: grid;
-  justify-items: center;
-  grid-gap: .3em }
-  nav > button {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    aspect-ratio: 1/1 }
+  nav {
+    position: fixed;
+    top: 1em;
+    right: 1em;
+    display: grid;
+    justify-items: center;
+    grid-gap: .3em }
+    nav > button {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      aspect-ratio: 1/1;
+      width: 1.6em }
 a:link { color: royalblue }
 a:visited { color: blueviolet }
 wasm-sim {
   display: block;
   height: 100lvh;
   width: clamp(60lvw, 50em, 90lvw) }
+/* ::-webkit-scrollbar { opacity: .5 } */

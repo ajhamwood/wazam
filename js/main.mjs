@@ -10,12 +10,12 @@ const sims = {};
   sims.bulk_table,
   sims.multi_val,
   sims.atomics,
-  sims.simd,
+  sims.simd_all,
   sims.exn_legacy,
   sims.ext_const,
   sims.func_refs,
   sims.gc_tailcall,
-  sims.multi_mem,
+  sims.multi_mem64,
   sims.exn,
   sims.str_builtins
 ] = simList);

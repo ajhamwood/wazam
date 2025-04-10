@@ -423,10 +423,12 @@ const simList = (() => {
           memory_import_entry(str_utf8("js"), str_utf8("mem"), resizable_limits(1, 1))
         ]),
         function_section([
+          varuint32(0),
           varuint32(0)
         ]),
         export_section([
-          export_entry(str_utf8("simd"), external_kind.function, varuint32(0))
+          export_entry(str_utf8("simd"), external_kind.function, varuint32(0)),
+          export_entry(str_utf8("relax"), external_kind.function, varuint32(0))
         ]),
         code_section([
           function_body([], [
@@ -437,16 +439,29 @@ const simList = (() => {
                 v128.load(align64, i32.const(16)),
               )
             )
+          ]),
+          function_body([], [
+            v128.store(align32,
+              i32.const(16),
+              i16x8.relaxed_q15mulr_s(
+                v128.load(align64, i32.const(0)),
+                v128.load(align64, i32.const(16)),
+              )
+            )
           ])
         ])
       ]),
       async runner () {
         const { instance } = await this.makeInstance();
-        new Uint16Array(this.imports.js.mem.buffer).set(Array(16).fill(0).map((_, i) => (i + 1) * 0x0800 - 1))
+        new Uint16Array(this.imports.js.mem.buffer).set(Array(16).fill(0).map((_, i) => (i + 1) * 0x0800 - 1));
         this.console.log("Wasm simd test:",
           Array.from(new Int16Array(this.imports.js.mem.buffer.slice(0, 16))).map(v => (v / 0x8000).toPrecision(6)),
           Array.from(new Int16Array(this.imports.js.mem.buffer.slice(16, 32))).map(v => (v / 0x8000).toPrecision(6)),
           instance.exports.simd(),
+          Array.from(new Int16Array(this.imports.js.mem.buffer.slice(16, 32))).map(v => (v / 0x8000).toPrecision(6))
+        );
+        this.console.log("Wasm relaxed simd test:",
+          instance.exports.relax(),
           Array.from(new Int16Array(this.imports.js.mem.buffer.slice(16, 32))).map(v => (v / 0x8000).toPrecision(6))
         );
       },
