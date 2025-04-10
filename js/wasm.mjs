@@ -1296,20 +1296,20 @@ const
     
     // (InitExpr, [VarUint32] | [ElemExpr], Maybe RefType, Maybe VarUint32) -> ElemSegment
     active_elem_segment: (expr, elemPayload, refType, tableIndex) => new cell(T.elem_segment, tableIndex ?
-      [ varuint32(2 + 4 * !!refType), tableIndex ?? varuint1_0, expr, refType ?? varuint1_0, varuint32(elemPayload.length), ...elemPayload ] :
-      [ varuint32(0 + 4 * !!refType), expr, varuint32(elemPayload.length), ...elemPayload ]),
+      [ varUint32Cache[2 + 4 * !!refType], tableIndex ?? varuint1_0, expr, refType ?? varuint1_0, varuint32(elemPayload.length), ...elemPayload ] :
+      [ varUint32Cache[0 + 4 * !!refType], expr, varuint32(elemPayload.length), ...elemPayload ]),
     // ([VarUint32] | [ElemExpr], Maybe RefType) -> ElemSegment
     passive_elem_segment: (elemPayload, refType) => new cell(T.elem_segment,
-      [ varuint32(1 + 4 * !!refType), refType ?? varuint1_0, varuint32(elemPayload.length), ...elemPayload ]),
+      [ varUint32Cache[1 + 4 * !!refType], refType ?? varuint1_0, varuint32(elemPayload.length), ...elemPayload ]),
     // ([VarUint32] | [ElemExpr], Maybe RefType) -> ElemSegmentbulk memory examples
     declarative_elem_segment: (elemPayload, refType) => new cell(T.elem_segment,
-      [ varuint32(3 + 4 * !!refType), refType ?? varuint1_0, varuint32(elemPayload.length), ...elemPayload ]),
+      [ varUint32Cache[3 + 4 * !!refType], refType ?? varuint1_0, varuint32(elemPayload.length), ...elemPayload ]),
 
     // Data -> DataSegment
     passive_data_segment: data => new cell(T.data_segment, [ varuint32(1), data ]),
     // (InitExpr, Data, Maybe VarUint32) -> DataSegment
     active_data_segment: (offset, data, memoryIndex) => new cell(T.data_segment,
-      memoryIndex ? [ varuint32(2), memoryIndex, offset, data ] : [ varuint32(0), offset, data ]),
+      memoryIndex ? [ varUint32Cache[2], memoryIndex, offset, data ] : [ varuint1_0, offset, data ]),
 
     // ([ValueType], [ValueType]) -> FuncType
     func_type: (paramTypes = [], returnType = []) => new cell(T.func_type, 
@@ -1334,10 +1334,9 @@ const
     tag_type: typeIndex => new cell(T.tag_type, [ uint8(0), typeIndex ]),
     
     // Expressed in number of memory pages (1 page = 64KiB)
-    // (uint32, Maybe uint32) -> ResizableLimits
-    resizable_limits: (initial, maximum, shared) => new cell(T.resizable_limits, maximum ?
-      shared ? [ varuint32(3), varuint32(initial), varuint32(maximum) ] :
-      [ varuint1_1, varuint32(initial), varuint32(maximum) ] : [ varuint1_0, varuint32(initial) ]),
+    // (uint64, Maybe uint64, bool, bool) -> ResizableLimits
+    resizable_limits: (initial, maximum, shared = 0, mem64 = 0) => new cell(T.resizable_limits, maximum ?
+      [ varUint32Cache[1 + 2 * shared + 4 * mem64], varuint32(initial), varuint32(maximum) ] : [ varUint32Cache[2 * shared + 4 * mem64], varuint32(initial) ]),
     // (GlobalType, InitExpr) -> GlobalVariable
     global_variable: (type, init) => new cell(T.global_variable, [ type, init ]),
     // [N] -> InitExpr
@@ -1456,7 +1455,7 @@ const
     select: (cond, trueRes, falseRes, [trueType, falseType] = []) => {
       assert(trueRes.r === falseRes.r || (trueType && falseType));
       return trueType && falseType ?
-        new instr_pre_imm([0x1c], Void, [ trueRes, falseRes, cond ], [ varuint32(2), trueType, falseType ]) :
+        new instr_pre_imm([0x1c], Void, [ trueRes, falseRes, cond ], [ varUint32Cache[2], trueType, falseType ]) :
         new instr_pre([0x1b], trueRes.r, [ trueRes, falseRes, cond ]) },
 
     // Variable access

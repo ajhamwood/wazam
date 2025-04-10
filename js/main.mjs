@@ -53,6 +53,7 @@ $.queries({
 
 $.loadWc("wasm-sim", {
   sim: null,
+  
   constructor () {
     const sim =  this.sim = sims[this.id];
     sim.name = this.id;
@@ -61,11 +62,27 @@ $.loadWc("wasm-sim", {
     Object.assign(this, { titleElement, copyElement, textReprElement, bufferReprElement, consoleElement, controlsElement });
     textReprElement.innerText = sim.code;
     bufferReprElement.innerText = sim.printBuf;
-    $.all("br", bufferReprElement).forEach(el => bufferReprElement.insertBefore(document.createElement("span"), el));
-    bufferReprElement.append(document.createElement("span"));
+    this.makeSections(bufferReprElement);
+    $.all("br", bufferReprElement).forEach(br => br.parentElement.insertBefore(document.createElement("label"), br));
+    bufferReprElement.append(document.createElement("label"));
     $.queries({
       ".run-wasm": { click () { sim.play() } },
       ".reset-wasm": { click () { sim.reset() } }
     }, this.shadowRoot)
+  },
+
+  makeSections (el) {
+    const
+      cuml = this.sim.sectionLengths.reduce((a, x) => a.concat([[ a.at(-1)[1] + 1, a.at(-1)[1] + x ]]), [[, -1]]).slice(1),
+      textNodes = Array.from(el.childNodes).filter(n => n.nodeType === 3);
+    for (const [a, f] of cuml.toReversed()) {
+      const
+        range = document.createRange(), span = document.createElement("span"),
+        an = Math.floor(a / 8), ao = a % 8, fn = Math.floor(f / 8), fo = f % 8;
+      range.setStart(textNodes[an], 3 * ao + (an !== 0));
+      range.setEnd(textNodes[fn], 3 * fo + 2 + (fn !== 0));
+      range.surroundContents(span)
+    }
   }
+
 })

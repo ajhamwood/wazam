@@ -5,7 +5,7 @@ import { c, get, sect_id, Emitter, printCode } from "./wasm.mjs";
 class WasmSim {
 
   #name; #module; #importsObj; #compileOpts; #runner; #teardown
-  makeInstance; makeModule; #code_pretty; #buffer; #log = []; #component
+  makeInstance; makeModule; #code_pretty; #buffer; #log = []; #component; #sec_lengths
   constructor ({ module, importsObj = {}, compileOpts, runner, teardown }) {
     this.#module = module;
     this.#importsObj = importsObj;
@@ -20,6 +20,7 @@ class WasmSim {
     const mod = this.#module, codeSection = get.section(mod, sect_id.code);
     // TODO print entire module
     this.#code_pretty = "";
+    this.#sec_lengths = mod.v.map(s => s.z);
     for (let funcBody of get.function_bodies(codeSection)) {
       if (this.#code_pretty) this.#code_pretty += "\n";
       printCode(funcBody.code, s => this.#code_pretty += s)
@@ -43,6 +44,8 @@ class WasmSim {
   set imports (_) {}
   get raw () { return new Uint8Array(this.#buffer) }
   set raw (_) {}
+  get sectionLengths () { return this.#sec_lengths.slice() }
+  set sectionLengths (_) {}
 
   findImport (im) {
     for (const [module, mObj] of Object.entries(this.#importsObj))
@@ -694,11 +697,11 @@ const simList = (() => {
     new WasmSim({
       module: module([
         type_section([
-          comp_type(comp.Func, [ i32, i32 ], [ i32 ])
+          comp_type(comp.Func, [ i64, i32 ], [ i32 ])
         ]),
         import_section([
-          memory_import_entry( str_utf8("js"), str_utf8("mem1"), resizable_limits(1, 1)),
-          memory_import_entry( str_utf8("js"), str_utf8("mem2"), resizable_limits(1, 1))
+          memory_import_entry( str_utf8("js"), str_utf8("mem1"), resizable_limits(1, 1, false, true)),
+          memory_import_entry( str_utf8("js"), str_utf8("mem2"), resizable_limits(1, 1, false, true))
         ]),
         function_section([
           varuint32(0)
@@ -710,23 +713,23 @@ const simList = (() => {
           function_body([], [
             if_(i32,
               i32.or(
-                i32.lt_u(
-                  i32.ctz(get_local(i32, 0)),
-                  i32.const(2)
+                i64.lt_u(
+                  i64.ctz(get_local(i64, 0)),
+                  i64.const(2)
                 ),
-                i32.gt_u(
-                  get_local(i32, 0),
-                  i32.const(0xFFFC)
+                i64.gt_u(
+                  get_local(i64, 0),
+                  i64.const(0xFFFC)
                 ),
               ),
               [ i32.const(0) ],
               [
                 i32.store(align32,
-                  get_local(i32, 0),
+                  get_local(i64, 0),
                   get_local(i32, 1)
                 ),
                 i32.store(align32,
-                  get_local(i32, 0),
+                  get_local(i64, 0),
                   i32.mul(
                     get_local(i32, 1),
                     i32.const(2)
@@ -741,13 +744,13 @@ const simList = (() => {
       ]),
       async runner () { // TODO check threaded multi-memory ops
         const { instance } = await this.makeInstance();
-        this.console.log("Wasm multi-memory test:", instance.exports.multistore(0x4, 0x7FFFFFFF),
+        this.console.log("Wasm multi-memory and memory64 test:", instance.exports.multistore(0x4n, 0x7FFFFFFF),
           Array.from(new Uint32Array(this.imports.js.mem1.buffer.slice(0, 8))),
           Array.from(new Uint32Array(this.imports.js.mem2.buffer.slice(0, 8))));
       },
       importsObj: { js: {
-        mem1: new WebAssembly.Memory({ initial: 1, maximum: 1 }),
-        mem2: new WebAssembly.Memory({ initial: 1, maximum: 1 })
+        mem1: new WebAssembly.Memory({ initial: 1n, maximum: 1n, address: "i64" }),
+        mem2: new WebAssembly.Memory({ initial: 1n, maximum: 1n, address: "i64" })
       } }
     }),
 
