@@ -16,7 +16,8 @@ const sims = {};
   sims.func_refs,
   sims.gc_tailcall,
   sims.multi_mem,
-  sims.exn
+  sims.exn,
+  sims.str_builtins
 ] = simList);
 self.app = new $.Machine({ inView: 0, simList, viewportHeight: null });
 

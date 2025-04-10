@@ -21,7 +21,7 @@ WebAssembly extensions
   - [x] (FF121) Tail calls
   - [x] (FF125) Multi-memory
   - [x] (FF131) Exception handling with exnref
-  - [ ] (FF134) JS string builtins
+  - [x] (FF134) JS string builtins
   - [ ] (FF134) Memory64
   - [ ] (?) Relaxed SIMD
 

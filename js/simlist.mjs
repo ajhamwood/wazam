@@ -6,7 +6,7 @@ class WasmSim {
 
   #name; #module; #importsObj; #compileOpts; #runner; #teardown
   makeInstance; makeModule; #code_pretty; #buffer; #log = []; #component
-  constructor ({ module, importsObj, compileOpts, runner, teardown }) {
+  constructor ({ module, importsObj = {}, compileOpts, runner, teardown }) {
     this.#module = module;
     this.#importsObj = importsObj;
     this.#compileOpts = compileOpts;
@@ -239,11 +239,7 @@ const simList = (() => {
           comp_type(comp.Func, [ i32, i32, i32 ])
         ]),
         import_section([
-          memory_import_entry(
-            str_utf8("js"),
-            str_utf8("mem"),
-            resizable_limits(1, 1)
-          )
+          memory_import_entry(str_utf8("js"), str_utf8("mem"), resizable_limits(1, 1))
         ]),
         function_section([
           varuint32(0)
@@ -284,11 +280,7 @@ const simList = (() => {
           comp_type(comp.Func, [ i32 ]),
         ]),
         import_section([
-          function_import_entry(
-            str_utf8("js"),
-            str_utf8("run"),
-            varuint32(0)
-          )
+          function_import_entry(str_utf8("js"), str_utf8("run"), varuint32(0))
         ]),
         function_section([
           varuint32(1),
@@ -355,11 +347,7 @@ const simList = (() => {
           comp_type(comp.Func, [], [ i32 ])
         ]),
         import_section([
-          memory_import_entry(
-            str_utf8("js"),
-            str_utf8("mem"),
-            resizable_limits(1, 1, true)
-          )
+          memory_import_entry(str_utf8("js"), str_utf8("mem"), resizable_limits(1, 1, true))
         ]),
         function_section([
           varuint32(0),
@@ -429,11 +417,7 @@ const simList = (() => {
           comp_type(comp.Func, [], [])
         ]),
         import_section([
-          memory_import_entry(
-            str_utf8("js"),
-            str_utf8("mem"),
-            resizable_limits(1, 1)
-          )
+          memory_import_entry(str_utf8("js"), str_utf8("mem"), resizable_limits(1, 1))
         ]),
         function_section([
           varuint32(0)
@@ -568,11 +552,7 @@ const simList = (() => {
           comp_type(comp.Func, [ ref_null(varuint32(0)) ], [ i32 ])
         ]),
         import_section([
-          table_import_entry(
-            str_utf8("js"),
-            str_utf8("tbl"),
-            table_type(heap.Func, resizable_limits(2))
-          )
+          table_import_entry(str_utf8("js"), str_utf8("tbl"), table_type(heap.Func, resizable_limits(2)))
         ]),
         function_section([
           varuint32(0),
@@ -828,6 +808,85 @@ const simList = (() => {
       importsObj: { js: {
         exn1: new WebAssembly.Tag({ parameters: [ "i32" ] })
       } }
+    }),
+
+    new WasmSim({
+      module: module([
+        type_section([
+          comp_type(comp.Func, [ i32 ]),
+          comp_type(comp.Arr, field_type(packed.I16, true)),
+          comp_type(comp.Func, [ heap.Extern, ref_null(varuint32(1)), i32 ], [ i32 ]),
+        ]),
+        import_section([
+          global_import_entry(str_utf8("str1"), str_utf8("my string"), global_type(heap.Extern)),
+          function_import_entry(str_utf8("wasm:js-string"), str_utf8("intoCharCodeArray"), varuint32(2))
+        ]),
+        function_section([
+          varuint32(0)
+        ]),
+        table_section([
+          table_init_entry(
+            table_type(ref(heap.Func), resizable_limits(1, 1)),
+            init_expr([ func_ref(0) ])
+          )
+        ]),
+        memory_section([
+          resizable_limits(1, 1)
+        ]),
+        export_section([
+          export_entry(str_utf8("load"), external_kind.function, varuint32(1)),
+          export_entry(str_utf8("data"), external_kind.memory, varuint32(0))
+        ]),
+        code_section([
+          function_body([ local_entry(1, ref_null(varuint32(1))), local_entry(2, i32) ], [
+            set_local(1, new_array(1, i32.const(0), i32.const(9))),
+            drop(void_, call_indirect(i32,
+              i32.const(0),
+              varuint32(0),
+              varuint32(2),
+              [
+                get_global(heap.Extern, 0),
+                get_local(ref(varuint32(1)), 1),
+                i32.const(0)
+              ]
+            )),
+            // set_local(1, cast_ref(varuint32(1),
+            //   convert_extern_any(get_global(heap.Extern, 0))
+            // )),
+            set_local(3, len_array(get_local(ref(varuint32(1)), 1))),
+            void_block([ void_loop([
+              br_if(1,
+                i32.ge_s(
+                  get_local(i32, 2),
+                  get_local(i32, 3)
+                )
+              ),
+              i32.store(align32,
+                i32.add(
+                  get_local(i32, 2),
+                  get_local(i32, 0)
+                ),
+                get_array_u(i32, 1,
+                  get_local(ref(varuint32(1)), 1),
+                  get_local(i32, 2)
+                )
+              ),
+              set_local(2, i32.add(
+                get_local(i32, 2),
+                i32.const(1)
+              )),
+              br(0)
+            ]) ])
+          ])
+        ])
+      ]),
+      async runner () {
+        const { instance } = await this.makeInstance();
+        instance.exports.load(3);
+        this.console.log("Wasm js string builtins test:",
+          new TextDecoder().decode(instance.exports.data.buffer.slice(0, 16)));
+      },
+      compileOpts: { builtins: [ 'js-string' ], importedStringConstants: "str1" }
     })
     
   ]
