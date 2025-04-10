@@ -20,7 +20,7 @@ WebAssembly extensions
   - [x] (FF120) Garbage collection
   - [x] (FF121) Tail calls
   - [x] (FF125) Multi-memory
-  - [ ] (FF131) Exception handling with exnref
+  - [x] (FF131) Exception handling with exnref
   - [ ] (FF134) JS string builtins
   - [ ] (FF134) Memory64
   - [ ] (?) Relaxed SIMD

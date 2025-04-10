@@ -65,14 +65,21 @@ class WasmSim {
         self.#log = [];
         self.#component.consoleElement.innerText = ""
       },
-      error (tag, arity, e) {
-        const exnArgs = [];
-        for (let i = 0; i < arity; i++) exnArgs.push(e.getArg(tag, i));
-        self.#log.push({ logLevel: 4, params: [ e, ...exnArgs ] });
-        const displayedErr = [ "WASM: user defined exception", self.findImport(tag), ":", ...exnArgs ];
-        self.#component.consoleElement.innerText += displayedErr.map(JSON.stringify).join(" ") + "\n";
-        self.#component.consoleElement.scrollTo(0, 32768);
-        console.error(...displayedErr)
+      error (tag, e, arity, ...args) {
+        if (tag === undefined) {
+          const unknErr = "WASM: unknown error";
+          self.#component.consoleElement.innerText += JSON.stringify(unknErr) + "\n";
+          self.#component.consoleElement.scrollTo(0, 32768);
+          console.error(unknErr)
+        } else {
+          const exnArgs = [];
+          for (let i = 0; i < arity; i++) exnArgs.push(e.getArg(tag, i));
+          self.#log.push({ logLevel: 4, params: [ e, ...exnArgs ] });
+          const displayedErr = [ "WASM: user defined exception", self.findImport(tag), ...args, ":", ...exnArgs ];
+          self.#component.consoleElement.innerText += displayedErr.map(JSON.stringify).join(" ") + "\n";
+          self.#component.consoleElement.scrollTo(0, 32768);
+          console.error(...displayedErr)
+        }
       }
     }
   })()
@@ -125,14 +132,16 @@ const simList = (() => {
     global_section, export_section, start_section, element_section, code_section, data_section, datacount_section, tag_section,
     function_import_entry, table_import_entry, memory_import_entry, global_import_entry, tag_import_entry, export_entry,
     active_elem_segment, passive_elem_segment, declarative_elem_segment, active_data_segment, passive_data_segment,
-    rec_type, sub_type, comp_type, func_type, field_type, table_type, table_init_entry, global_type, tag_type, resizable_limits, global_variable, init_expr, elem_expr_func, elem_expr_null, function_body, local_entry,
+    rec_type, sub_type, comp_type, func_type, field_type, table_type, table_init_entry, global_type, tag_type,
+    resizable_limits, global_variable, init_expr, elem_expr_func, elem_expr_null, function_body, local_entry,
     unreachable, nop, block, void_block, loop, void_loop, if_, void_if, end, br, br_if, br_table, br_on_null, br_on_non_null, br_on_cast, br_on_cast_fail,
-    try_catch, catch_clause, try_delegate, throw_, rethrow, return_, return_void, return_multi, return_call_ref, return_call, return_call_indirect, call, call_indirect, call_ref, drop, select,
-    get_local, set_local, tee_local, get_global, set_global,
+    try_catch, catch_clause, try_delegate, throw_, rethrow, throw_ref, try_table, catch_clauses, catch_, catch_ref, catch_all, catch_all_ref,
+    return_, return_void, return_multi, return_call_ref, return_call, return_call_indirect, call, call_indirect, call_ref, drop, select,
+    get_local, set_local, tee_local, get_global, set_global, null_ref, is_null_ref, func_ref, eq_ref, as_non_null_ref,
     size_memory, grow_memory, init_memory, drop_data, copy_memory, fill_memory, init_table, drop_elem, copy_table, grow_table, size_table, fill_table, set_table, get_table,
-    null_ref, is_null_ref, func_ref, eq_ref, as_non_null_ref,
     new_struct, new_default_struct, get_struct, get_struct_s, get_struct_u, set_struct,
-    new_array, new_default_array, new_fixed_array, new_data_array, new_elem_array, get_array, get_array_s, get_array_u, set_array, len_array, fill_array, copy_array, init_data_array, init_elem_array,
+    new_array, new_default_array, new_fixed_array, new_data_array, new_elem_array,
+    get_array, get_array_s, get_array_u, set_array, len_array, fill_array, copy_array, init_data_array, init_elem_array,
     test_ref, test_null_ref, cast_ref, cast_null_ref, convert_extern_any, convert_any_extern, i31_ref, get_i31_s, get_i31_u, 
     atomic_notify, atomic_wait32, atomic_wait64, atomic_fence,
     align8, align16, align32, align64, i32, i64, f32, f64, v128, i8x16, i16x8, i32x4, i64x2, f32x4, f64x2
@@ -461,16 +470,13 @@ const simList = (() => {
       module: module([
         type_section([
           comp_type(comp.Func, [ i32 ], [ i32 ]),
-          comp_type(comp.Func, [ i32 ], [])
+          comp_type(comp.Func, [ i32 ])
         ]),
         import_section([
           tag_import_entry(str_utf8("js"), str_utf8("exn"), tag_type(varuint32(1)))
         ]),
         function_section([
           varuint32(0)
-        ]),
-        tag_section([
-          tag_type(varuint32(1))
         ]),
         export_section([
           export_entry(str_utf8("throw_leg"), external_kind.function, varuint32(0))
@@ -508,7 +514,10 @@ const simList = (() => {
         const { instance } = await this.makeInstance();
         let res;
         try { res = instance.exports.throw_leg(5) }
-        catch (e) { if (e.is(this.imports.js.exn)) this.console.error(this.imports.js.exn, 1, e) }
+        catch (e) {
+          if (e.is(this.imports.js.exn)) this.console.error(this.imports.js.exn, e, 1);
+          else this.console.error()
+        }
         this.console.log("Wasm legacy exceptions test:", res)
       },
       importsObj: { js: { exn: new WebAssembly.Tag({ parameters: [ "i32" ] }) } }
@@ -698,7 +707,7 @@ const simList = (() => {
           { instance } = await this.makeInstance(),
           { funcs, nil, cons, fold } = instance.exports,
           reducer = funcs.get(0), list = cons(cons(nil(), 2), 3);
-        this.console.log("Wasm garbage collection test:", fold(list, reducer, 1))
+        this.console.log("Wasm garbage collection and tail calls test:", fold(list, reducer, 1))
       }
     }),
 
@@ -750,15 +759,74 @@ const simList = (() => {
           ])
         ])
       ]),
-      async runner () {
+      async runner () { // TODO check threaded multi-memory ops
         const { instance } = await this.makeInstance();
-        this.console.log("Wasm memory test:", instance.exports.multistore(0x4, 0x7FFFFFFF),
+        this.console.log("Wasm multi-memory test:", instance.exports.multistore(0x4, 0x7FFFFFFF),
           Array.from(new Uint32Array(this.imports.js.mem1.buffer.slice(0, 8))),
           Array.from(new Uint32Array(this.imports.js.mem2.buffer.slice(0, 8))));
       },
       importsObj: { js: {
         mem1: new WebAssembly.Memory({ initial: 1, maximum: 1 }),
         mem2: new WebAssembly.Memory({ initial: 1, maximum: 1 })
+      } }
+    }),
+
+    new WasmSim({
+      module: module([
+        type_section([
+          comp_type(comp.Func, [ i32 ], [ i32 ]),
+          comp_type(comp.Func, [ i32 ]),
+          comp_type(comp.Func, [ i32, heap.Exn ]),
+          comp_type(comp.Func, [], [ i32, heap.Exn ])
+        ]),
+        import_section([
+          tag_import_entry(str_utf8("js"), str_utf8("exn1"), tag_type(varuint32(1)))
+        ]),
+        function_section([
+          varuint32(0)
+        ]),
+        tag_section([
+          tag_type(varuint32(2))
+        ]),
+        export_section([
+          export_entry(str_utf8("throw_by_ref"), external_kind.function, varuint32(0)),
+          export_entry(str_utf8("exn2"), external_kind.tag, varuint32(1))
+        ]),
+        code_section([
+          function_body([], [
+            throw_ref(block(varuint32(3), [
+              return_(drop(i32, block(varuint32(3), [
+                try_table(void_,
+                  catch_clauses([
+                    catch_ref(varuint32(0), varuint32(1)),
+                    catch_(varuint32(1), varuint32(0)),
+                  ]),
+                  [
+                    if_(void_, i32.eqz(get_local(i32, 0)),
+                      [ throw_(varuint32(0), [ i32.const(5) ]) ],
+                      [ throw_(varuint32(1), [ i32.const(6), null_ref(heap.Exn) ]) ]
+                    )
+                  ],
+                ),
+                i32.const(-1),
+                null_ref(heap.Exn)
+              ])))
+            ]))
+          ])
+        ])
+      ]),
+      async runner () {
+        const { instance } = await this.makeInstance();
+        let res;
+        try { res = instance.exports.throw_by_ref(0) }
+        catch (e) {
+          if (e.is(this.imports.js.exn1)) this.console.error(this.imports.js.exn1, e, 1, "caught");
+          else if (e.is(instance.exports.exn2)) this.console.error(instance.exports.exn2, e, 2, "caught")
+        }
+        this.console.log("Wasm exnref test:", res);
+      },
+      importsObj: { js: {
+        exn1: new WebAssembly.Tag({ parameters: [ "i32" ] })
       } }
     })
     

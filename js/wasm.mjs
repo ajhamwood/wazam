@@ -74,6 +74,7 @@ const T = {
   instr_imm1_post:    Symbol('instr_imm1_post'), // non-standard
   instr_pre_imm:      Symbol('instr_pre_imm'), // non-standard
   instr_pre_imm_post: Symbol('instr_pre_imm_post'), // non-standard
+  instr_catch_clause: Symbol('instr_catch_clause'), // non-standard
 
   // Cells
   module:           Symbol('module'),
@@ -92,6 +93,7 @@ const T = {
   memory_type:      Symbol('memory_type'),
   global_type:      Symbol('global_type'),
   tag_type:         Symbol("tag_type"),
+  catch_clauses:    Symbol("catch_clauses"),
   resizable_limits: Symbol('resizable_limits'),
   global_variable:  Symbol('global_variable'),
   init_expr:        Symbol('init_expr'),
@@ -307,6 +309,17 @@ class instr_pre_imm_post extends instr_cell {
     writev(writev(this.v.emit(writev(e, this.pre).writeU8(this.p)), this.imm), this.post) }
 }
 
+// instr_cell instr_catch_clause => instr_catch_clause
+// Functions like instr_imm 
+class instr_catch_clause extends instr_cell {
+  // (uint8 | uint16, AnyResult, N) -> instr_catch_clause
+  constructor (op, mbResult, imm) {
+    super(T.instr_catch_clause, op, mbResult, sumz(imm));
+    this.imm = imm
+  }
+  emit (e) { return writev(e.writeU8(this.v), this.imm) }
+}
+
 // R => (number, number, number -> Maybe R) -> [R]
 function maprange (start, stop, fn) {
   let a = []  // [R]
@@ -440,6 +453,7 @@ const
     I16: new type_atom(-0x09, 0x77),      // 16-bit integer type
   },
   Heap = {   // HeapType                  // Heap types
+    Noexn: new type_atom(-0x0c, 0x74),    // Null exn ref
     Nofunc: new type_atom(-0x0d, 0x73),   // Null func ref
     Noextern: new type_atom(-0x0e, 0x72), // Null extern ref
     None: new type_atom(-0x0f, 0x71),     // Null heap ref
@@ -450,6 +464,7 @@ const
     I31: new type_atom(-0x14, 0x6c),      // Unboxed scalar ref
     Struct: new type_atom(-0x15, 0x6b),   // Struct ref
     Arr: new type_atom(-0x16, 0x6a),      // Array ref
+    Exn: new type_atom(-0x17, 0x69)       // Exception ref
   },
   Ref = {                                 // Reference types
     Ref: new type_atom(-0x1c, 0x64),      // Reference
@@ -1587,9 +1602,18 @@ const
     try_delegate: (mbResult, body, labelIndex) =>
       new instr_imm1_post([0x06], mbResult, [ ...body, delegateOp, labelIndex ]),
     // (VarUint32, [AnyOp]) -> Op Void
-    throw_: (tagIndex, args) => new instr_pre_imm([0x08], Void, args, [tagIndex]),
+    throw_: (tagIndex, args = []) => new instr_pre_imm([0x08], Void, args, [tagIndex]),
     // VarUint32 -> Op Void
     rethrow: labelIndex => new instr_imm1([0x09], Void, labelIndex),
+    // TagRef T -> Op Void
+    throw_ref: tagRef => new instr_pre1([0x0a], Void, tagRef),
+    //
+    try_table: (mbResult, catchClauses, body = []) => new instr_imm1_post([0x1f], mbResult, [ catchClauses, ...body, end ]),
+    catch_clauses: (catchLabels = []) => new cell (T.catch_clauses, [ varuint32(catchLabels.length), ...catchLabels ]),
+    catch_: (tagIndex, labelIndex) => new instr_catch_clause([0x00], Void, [ tagIndex, labelIndex ]),
+    catch_ref: (tagIndex, labelIndex) => new instr_catch_clause([0x01], Void, [ tagIndex, labelIndex ]),
+    catch_all: labelIndex => new instr_catch_clause([0x02], Void, [ labelIndex ]),
+    catch_all_ref: labelIndex => new instr_catch_clause([0x03], Void, [ labelIndex ]),
 
     // Vector const immediate value constructors
     vari8x16, vari16x8, vari32x4, vari64x2, varf32x4, varf64x2,
@@ -1649,6 +1673,7 @@ const
     [ 0x7, "catch" ],
     [ 0x8, "throw" ],
     [ 0x9, "rethrow" ],
+    [ 0xa, "throw_ref" ],
     [ 0xb, "end" ],
     [ 0xc, "br" ],
     [ 0xd, "br_if" ],
@@ -1664,6 +1689,7 @@ const
     [ 0x19, "catch_all" ],
     [ 0x1a, "drop" ],
     [ 0x1b, "select" ],
+    [ 0x1f, "try_table" ],
     [ 0x20, "local.get" ],
     [ 0x21, "local.set" ],
     [ 0x22, "local.tee" ],
@@ -2207,6 +2233,42 @@ const
     [ 76, "i64.atomic.rmv8.cmpxchg_u" ],
     [ 77, "i64.atomic.rmv16.cmpxchg_u" ],
     [ 78, "i64.atomic.rmv32.cmpxchg_u" ]
+  ]),
+  opcodes_ty = new Map([
+    [ -0x01, 'i32' ],
+    [ -0x02, 'i64' ],
+    [ -0x03, 'f32' ],
+    [ -0x04, 'f64' ],
+    [ -0x05, 'v128' ],
+    [ -0x08, 'i8' ],
+    [ -0x09, 'i16' ],
+    [ -0x0c, 'noexn' ],
+    [ -0x0d, 'nofunc' ],
+    [ -0x0e, 'noextern' ],
+    [ -0x0f, 'none' ],
+    [ -0x10, 'func' ],
+    [ -0x11, 'extern' ],
+    [ -0x12, 'any' ],
+    [ -0x13, 'eq' ],
+    [ -0x14, 'i31' ],
+    [ -0x15, 'struct' ],
+    [ -0x16, 'array' ],
+    [ -0x17, 'exn' ],
+    [ -0x1c, 'ref' ],
+    [ -0x1d, 'ref null' ],
+    [ -0x20, 'func' ],
+    [ -0x21, 'struct' ],
+    [ -0x22, 'array' ],
+    [ -0x30, 'sub' ],
+    [ -0x31, 'sub final' ],
+    [ -0x32, 'rec' ],
+    [ -0x40, 'void' ]
+  ]),
+  opcodes_cc = new Map([
+    [ 0x00, "catch" ],
+    [ 0x01, "catch_ref" ],
+    [ 0x02, "catch_all" ],
+    [ 0x03, "catch_all_ref" ]
   ]);
 
 
@@ -2225,39 +2287,11 @@ function fmtimm (n) {
     case t.varint64:
     case t.float32:
     case t.float64:
-    case t.vec128: return n.v.toString(10)
-    case t.varint7: return readVarInt7(n.v).toString(10)
-    case t.type: switch (n.v) {
-      case -1:    return 'i32'
-      case -2:    return 'i64'
-      case -3:    return 'f32'
-      case -4:    return 'f64'
-      case -5:    return 'v128'
-      case -0x08: return 'i8'
-      case -0x09: return 'i16'
-      case -0x0d: return 'nofunc'
-      case -0x0e: return 'noextern'
-      case -0x0f: return 'none'
-      case -0x10: return 'func'
-      case -0x11: return 'extern'
-      case -0x12: return 'any'
-      case -0x13: return 'eq'
-      case -0x14: return 'i31'
-      case -0x15: return 'struct'
-      case -0x16: return 'array'
-      case -0x1c: return 'ref'
-      case -0x1d: return 'ref null'
-      case -0x20: return 'func'
-      case -0x21: return 'struct'
-      case -0x22: return 'array'
-      case -0x30: return 'sub'
-      case -0x31: return 'sub final'
-      case -0x32: return 'rec'
-      case -0x40: return 'void'
-      default: throw new Error('unexpected type ' + n.t.toString())
-    }
+    case t.vec128: return n.v.toString(10);
+    case t.varint7: return readVarInt7(n.v).toString(10);
+    case t.type: return getOpcode(0x80, n);
     case T.ref_type: return fmtimm(n.v[0]) + " " + fmtimm(n.v[1]);
-    default: console.log(n); throw new Error('unexpected imm ' + n.t.toString())
+    default: throw new Error('unexpected imm ' + n.t.toString())
   }
 }
 // Either uint8 (uint8, VarUint32) -> string
@@ -2267,7 +2301,10 @@ function getOpcode (p, v) {
     case 0xfb: return prefix_fb.get(v.v);
     case 0xfc: return prefix_fc.get(v.v);
     case 0xfd: return prefix_fd.get(v.v);
-    case 0xfe: return prefix_fe.get(v.v)
+    case 0xfe: return prefix_fe.get(v.v);
+
+    case 0x80: return opcodes_ty.get(v.v); // Overloading
+    case 0x1f: return opcodes_cc.get(v.v)  // Overloading
   }
 }
 // [N] -> string
@@ -2297,7 +2334,10 @@ function visitOp (n, c, depth) {
     case t.instr_pre_imm_post:
       visitOps(n.pre, c, depth);
       c.writeln(depth, getOpcode(n.p, n.v) + fmtimmv(n.imm));
-      visitOps(n.post, c, depth + 1); break;
+      return visitOps(n.post, c, depth + 1);
+    case T.catch_clauses: return visitOps(n.v.slice(1), c, depth);
+    case T.instr_catch_clause:
+      return c.writeln(depth, getOpcode(0x1f, n) + fmtimmv(n.imm));
     default: console.error("Unexpected op " + n.t.toString(),
       "0x" + (n.v.bytes?.toSpliced(0, 0, n.p).reduce((s, b) => s + b.toString(16).padStart(2, "0"), "") ?? n.v))
   }

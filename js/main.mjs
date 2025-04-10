@@ -15,7 +15,8 @@ const sims = {};
   sims.ext_const,
   sims.func_refs,
   sims.gc_tailcall,
-  sims.multi_mem
+  sims.multi_mem,
+  sims.exn
 ] = simList);
 self.app = new $.Machine({ inView: 0, simList, viewportHeight: null });
 
@@ -59,6 +60,8 @@ $.loadWc("wasm-sim", {
     Object.assign(this, { titleElement, copyElement, textReprElement, bufferReprElement, consoleElement, controlsElement });
     textReprElement.innerText = sim.code;
     bufferReprElement.innerText = sim.printBuf;
+    $.all("br", bufferReprElement).forEach(el => bufferReprElement.insertBefore(document.createElement("span"), el));
+    bufferReprElement.append(document.createElement("span"));
     $.queries({
       ".run-wasm": { click () { sim.play() } },
       ".reset-wasm": { click () { sim.reset() } }

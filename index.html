@@ -97,6 +97,12 @@
         <a href="https://github.com/WebAssembly/multi-memory/blob/main/proposals/multi-memory/Overview.md">Proposal</a>
       </p>
     </wasm-sim>
+    <wasm-sim id="exn">
+      <h1 slot="title">Exception handling with exnref</h1>
+      <p>
+        <a href="https://github.com/WebAssembly/exception-handling/blob/main/proposals/exception-handling/Exceptions.md">Proposal</a>
+      </p>
+    </wasm-sim>
   </main>
   <template id="wasm-sim">
     <style>
@@ -127,7 +133,13 @@ article {
     white-space: pre }
   .buffer-repr {
     margin-left: 0;
-    font-size: min(1em, calc((50cqw - 1.6rem - .5px) * 1.54 / 23)) }
+    font-size: min(1em, calc((50cqw - 1.6rem - .5px) * 1.54 / 28));
+    counter-reset: byteaddr 8 }
+    .buffer-repr > br { counter-increment: byteaddr 8 }
+    .buffer-repr > span::before { content: counter(byteaddr) }
+    .buffer-repr > span {
+      color: #ddd8;
+      float: right }
   .console {
     margin: 0 1rem 1rem;
     white-space: pre-wrap }
