@@ -1,4 +1,4 @@
-import { c, get, sect_id, Emitter, printCode } from "./wasm.mjs";
+import { c, get, Emitter, printCode } from "../src/wasm.mjs";
 
 
 
@@ -17,7 +17,7 @@ class WasmSim {
   }
 
   #init () {
-    const mod = this.#module, codeSection = get.section(mod, sect_id.code);
+    const mod = this.#module, codeSection = get.section(mod, c.sect_id.code);
     // TODO print entire module
     this.#code_pretty = "";
     this.#sec_lengths = mod.v.map(s => s.z);

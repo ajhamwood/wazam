@@ -34,3 +34,5 @@ Other
 
   - [ ] Port Citizen VM language to script
 </details>
+
+TODO fix threading in Chrome
