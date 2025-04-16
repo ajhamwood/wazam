@@ -27,7 +27,8 @@ WebAssembly extensions
 
 Wazam features
 
-  - [ ] WAST ↔ WASM (base on WASM-Util)
+  - [ ] WAST <- WASM (IR) (base on WASM-Util)
+  - [ ] WAST -> WASM (IR)
   - [ ] Design & implement my own scripting language
 
 Other

@@ -64,7 +64,7 @@ const T = {
   prefix:         Symbol('prefix'), // non-standard
   data:           Symbol('data'), // non-standard
   type:           Symbol('type'), // non-standard, signifies a varint7 type constant
-  external_kind:  Symbol('type'),
+  external_kind:  Symbol('external_kind'),
 
   // Instructions
   instr:              Symbol('instr'), // non-standard
@@ -83,6 +83,8 @@ const T = {
   export_entry:     Symbol('export_entry'),
   local_entry:      Symbol('local_entry'),
   table_entry:      Symbol('table_entry'),
+  memory_type:      Symbol('memory_type'),
+
   ref_type:         Symbol('ref_type'),
   rec_type:         Symbol('rec_type'),
   sub_type:         Symbol('sub_type'),
@@ -90,7 +92,6 @@ const T = {
   func_type:        Symbol('func_type'),
   field_type:       Symbol('field_type'),
   table_type:       Symbol('table_type'),
-  memory_type:      Symbol('memory_type'),
   global_type:      Symbol('global_type'),
   tag_type:         Symbol("tag_type"),
   catch_clauses:    Symbol("catch_clauses"),
@@ -1273,7 +1274,7 @@ const
 
     // (Str, [N]) -> CustomSection
     custom_section: (name, payload) => section(sect_id_custom, name, payload),
-    // [FuncType] -> TypeSection
+    // [TypeUse] -> TypeSection
     type_section: types => section(sect_id_type, varuint32(types.length), types),
     // [ImportEntry] -> ImportSection
     import_section: entries => section(sect_id_import, varuint32(entries.length), entries),
@@ -1339,7 +1340,7 @@ const
       [ varUint32Cache[3 + 4 * !!refType], refType ?? varuint1_0, varuint32(elemPayload.length), ...elemPayload ]),
 
     // Data -> DataSegment
-    passive_data_segment: data => new cell(T.data_segment, [ varuint32(1), data ]),
+    passive_data_segment: data => new cell(T.data_segment, [ varuint1_1, data ]),
     // (InitExpr, Data, Maybe VarUint32) -> DataSegment
     active_data_segment: (offset, data, memoryIndex) => new cell(T.data_segment,
       memoryIndex ? [ varUint32Cache[2], memoryIndex, offset, data ] : [ varuint1_0, offset, data ]),
@@ -1349,15 +1350,17 @@ const
       [ varuint32(paramTypes.length), ...paramTypes, varuint32(returnType.length), ...returnType ]),
     // (ValueType | PackedType, Boolean) -> FieldType
     field_type: (storageType, mut) => new cell(T.field_type, [ storageType, mut ? varuint1_1 : varuint1_0 ]),
-    // (R, FuncType | FieldType | [FieldType]) -> CompType
+    // (R, FuncType | FieldType | [FieldType]) -> TypeUse CompType
     comp_type: (ctype, ...typeData) => {
       switch (ctype) {
         case Comp.Func: return new cell(T.comp_type, [ ctype, c.func_type(...typeData) ]);
-        case Comp.Arr: return new cell(T.comp_type, [ ctype, ...typeData ]);
         case Comp.Struct: return new cell(T.comp_type, [ ctype, varuint32(typeData.length), ...typeData ]);
+        case Comp.Arr: return new cell(T.comp_type, [ ctype, ...typeData ]);
       }
     },
+    // [SubType] -> TypeUse
     rec_type: subTypes => new cell(T.rec_type, [ Rec.Rec, varuint32(subTypes.length), ...subTypes ]),
+    // ([VarUint32], CompType, bool) -> TypeUse SubType
     sub_type: (typeIndices, compType, isFinal) =>
       new cell(T.sub_type, [ isFinal ? Rec.SubFinal : Rec.Sub, varuint32(typeIndices.length), ...typeIndices, compType ]),
     // (ValueType, Maybe boolean) -> GlobalType

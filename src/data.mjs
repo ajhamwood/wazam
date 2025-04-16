@@ -1,4 +1,20 @@
 const
+sectData = [
+  [ 0, "custom" ],
+  [ 1, "type" ],
+  [ 2, "import" ],
+  [ 3, "function" ],
+  [ 4, "table" ],
+  [ 5, "memory" ],
+  [ 6, "global" ],
+  [ 7, "export" ],
+  [ 8, "start" ],
+  [ 9, "element" ],
+  [ 10, "code" ],
+  [ 11, "data" ],
+  [ 12, "datacount" ],
+  [ 13, "tag" ],
+],
 instrData = [
   [ 0x0, "unreachable" ],
   [ 0x1, "nop" ],
@@ -631,6 +647,7 @@ instrDataCc = [
 ],
 
 opcodeToInstr = {
+  seccodes: new Map(sectData),
   opcodes: new Map(instrData),
   prefix_fb: new Map(instrDataFB),
   prefix_fc: new Map(instrDataFC),
@@ -642,6 +659,7 @@ opcodeToInstr = {
 
 oppositeMap = es => new Map(es.values().map(([a, b]) => [b, a])),
 instrToOpcode = {
+  seccodes: oppositeMap(sectData),
   opcodes: oppositeMap(instrData),
   prefix_fb: oppositeMap(instrDataFB),
   prefix_fc: oppositeMap(instrDataFC),

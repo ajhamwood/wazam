@@ -21,10 +21,8 @@ class WasmSim {
     // TODO print entire module
     this.#code_pretty = "";
     this.#sec_lengths = mod.v.map(s => s.z);
-    for (let funcBody of get.function_bodies(codeSection)) {
-      if (this.#code_pretty) this.#code_pretty += "\n";
-      printCode(funcBody.code, s => this.#code_pretty += s)
-    }
+    printCode([mod], s => this.#code_pretty += s);
+
     const emitbuf = new Emitter(new ArrayBuffer(mod.z));
     mod.emit(emitbuf);
     this.#buffer = emitbuf.buffer;
