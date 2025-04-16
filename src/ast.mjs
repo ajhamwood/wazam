@@ -83,7 +83,6 @@ const T = {
   export_entry:     Symbol('export_entry'),
   local_entry:      Symbol('local_entry'),
   table_entry:      Symbol('table_entry'),
-  memory_type:      Symbol('memory_type'),
 
   ref_type:         Symbol('ref_type'),
   rec_type:         Symbol('rec_type'),
