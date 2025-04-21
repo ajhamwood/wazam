@@ -1,10 +1,8 @@
 import { t } from "./ast.mjs";
-import { opcodeToInstr } from "./data.mjs";
-const { seccodes, opcodes, prefix_fb, prefix_fc, prefix_fd, prefix_fe, opcodes_ty, opcodes_cc } = opcodeToInstr;
+import { seccodes, opcodes, prefix_fb, prefix_fc, prefix_fd, prefix_fe, opcodes_ty, opcodes_cc } from "./data.mjs";
 
 
-// Linear bytecode textual representation
-
+// Build S-expression
 function sexpr (depth, c, label, innerCB, { atNewLine = false, supSp = false } = {}) {
   c.write(depth, "(" + label);
   c.atNewLine ||= atNewLine;

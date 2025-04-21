@@ -25,7 +25,7 @@ return Object.assign((sel, node = document) => sel ? node.querySelector(sel) : n
     (test(ors, Array) && Promise.race(ors.map(fn => fn(v)))) || (test(ors, Function) && ors(v))))))({}),
 
 //   $.targets recursively adds event listeners to objects and removes them by name, indexed by regex
-  targets (obj, target = window) {
+  targets (obj, target = self) {
     for (const ts in obj) if (test(obj[ts], Function)) { if (test(target, $.Machine)) ts.split(' ').forEach(t => target.on(t, obj[ts]));
       else if (test(target, EventTarget)) ts.split(' ').forEach(t => add(target, ...t.match(/([^*#]*)(\*|#)?/).slice(1), obj[ts].bind(target))) }
     else if (test(obj[ts], String)) { if (test(target, $.Machine)) ts.split(' ').forEach(t => target.stop(t, obj[ts]));
@@ -44,7 +44,9 @@ return Object.assign((sel, node = document) => sel ? node.querySelector(sel) : n
     return $.all(dest, root).map(n => v($('template#' + id).content.cloneNode(true).children).map(c => n.appendChild(c))) },
 
 //   $.loadWc adds web components
-  loadWc (tag, { constructor: c, options: o, ...methods }, attrs = []) { class El extends HTMLElement { static get observedAttributes () { return attrs }
-    constructor(...args) { super(); this.attachShadow(o ?? { mode: 'open' }).appendChild($('#' + tag).content.cloneNode(true)); c?.apply(this, args) } };
-    Object.assign(El.prototype, methods); customElements.define(tag, El) } }) })();
+  async loadWc (tag, { constructor: c, options: o, ...methods }, attrs = [], fp) { let frag; if (fp)
+      self.document.body.append(frag = $("template", new DOMParser().parseFromString(await (await fetch(fp)).text(), "text/html")));
+    class El extends HTMLElement { static get observedAttributes () { return attrs } constructor(...args) { super();
+      this.attachShadow(o ?? { mode: 'open' }).append($('#' + tag).content.cloneNode(true)); c?.apply(this, args) } };
+    Object.assign(El.prototype, methods); customElements.define(tag, El); frag?.remove() } }) })();
 export default $

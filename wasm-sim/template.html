@@ -1,0 +1,114 @@
+<template id="wasm-sim">
+  <style>
+@media (prefers-color-scheme: dark) {
+  article :is(.text-repr, .buffer-repr, .console) { background-color: #fff3 }
+  textarea.editor { caret-color: #ddd } }
+@supports selector(::-webkit-scrollbar) { article > * { scrollbar-width: thin } }
+button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: .2em;
+  cursor: pointer;
+  font-family: Aloha, "STIX Two Math" }
+article {
+  container-type: size;
+  display: grid;
+  height: 100lvh;
+  grid-template-rows: 1fr;
+  grid-template-rows: min-content 10lvh auto max(20lvh, 4em) max(5lvh, 2em) 10lvh }
+:host(:not(:has(:not([slot])))) > article { grid-template-rows: min-content 0 auto max(20lvh, 4em) max(5lvh, 2em) 10lvh }
+  .article-copy, .buffer-repr, .console { overflow-y: auto }
+  .repr {
+    display: grid;
+    grid-template-columns: 1fr auto auto;
+    overflow-y: hidden }
+  .repr.hide-buffer { grid-template-rows: 1fr auto 0 }
+  .text-repr {
+    overflow: scroll;
+    position: relative }
+    .editor-wrapper {
+      height: max-content;
+      min-height: 100%;
+      position: relative }
+      .editor-wrapper > * {
+        width: 100%;
+        box-sizing: border-box }
+      .editor {
+        color: transparent;
+        position: absolute;
+        top: 0;
+        margin: 0;
+        border: 0;
+        outline: 0;
+        height: 100%;
+        background-color: transparent;
+        font: 1em Aloha;
+        padding: .3em 0;
+        resize: none;
+        caret-color: #222; }
+      .highlight {
+        height: max-content;
+        white-space: pre }
+  .highlight, .editor, .buffer-repr, .console {
+    font-size: min(1em, calc((50cqw - 1.6rem - .5px) * 1.54 / 28));
+    padding: 0;
+    font-family: Aloha, monospace;
+    padding: .3rem }
+  .text-repr, .buffer-repr, .console { background-color: #0003 }
+  :host(:not([editable])) .editor { display: none }
+  .buffer-toggle {
+    font-family: Aloha, "STIX Two Math";
+    background-color: #fff2;
+    align-content: end }
+    .display-buffer::before { content: "⇥" }
+    .hide-buffer .display-buffer::before { content: "⇤" }
+  .buffer-repr { counter-reset: byteaddr 8 }
+  .hide-buffer > .buffer-repr { display: none }
+    .buffer-repr br { counter-increment: byteaddr 8 }
+    .buffer-repr label::before { content: counter(byteaddr) }
+    .buffer-repr label {
+      color: #ddd8;
+      float: right;
+      margin-left: 1ex }
+    .buffer-repr > span:hover {
+      background-color: #ddd4;
+      cursor: pointer }
+  .repr, .console {
+    margin: 0 1rem 1rem;
+    max-width: calc(100cqw - 2em) }
+  .console {
+    white-space: pre-wrap;
+    box-sizing: border-box }
+  .controls {
+    display: flex;
+    flex-direction: row;
+    align-items: center }
+    .controls > * { margin-left: 1rem }
+  </style>
+  <article>
+    <div class="article-title">
+      <slot name="title"></slot>
+    </div>
+    <div class="article-copy">
+      <slot></slot>
+    </div>
+    <div class="repr hide-buffer">
+      <div class="text-repr">
+        <div class="editor-wrapper">
+          <textarea class="editor"></textarea>
+          <div class="highlight"></div>
+        </div>
+      </div>
+      <div class="buffer-toggle">
+        <button class="display-buffer"></button>
+      </div>
+      <div class="buffer-repr"></div>
+    </div>
+    <div class="console"></div>
+    <div class="controls">
+      <button class="run-wasm">Run ⏵</button>
+      <button class="reset-wasm">Reset ⏮</button>
+    </div>
+  </article>
+</template>

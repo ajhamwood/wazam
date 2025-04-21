@@ -646,27 +646,13 @@ instrDataCc = [
   [ 0x03, "catch_all_ref" ]
 ],
 
-opcodeToInstr = {
-  seccodes: new Map(sectData),
-  opcodes: new Map(instrData),
-  prefix_fb: new Map(instrDataFB),
-  prefix_fc: new Map(instrDataFC),
-  prefix_fd: new Map(instrDataFD),
-  prefix_fe: new Map(instrDataFE),
-  opcodes_ty: new Map(instrDataTy),
-  opcodes_cc: new Map(instrDataCc)
-},
+seccodes = new Map(sectData),
+opcodes = new Map(instrData),
+prefix_fb = new Map(instrDataFB),
+prefix_fc = new Map(instrDataFC),
+prefix_fd = new Map(instrDataFD),
+prefix_fe = new Map(instrDataFE),
+opcodes_ty = new Map(instrDataTy),
+opcodes_cc = new Map(instrDataCc);
 
-oppositeMap = es => new Map(es.values().map(([a, b]) => [b, a])),
-instrToOpcode = {
-  seccodes: oppositeMap(sectData),
-  opcodes: oppositeMap(instrData),
-  prefix_fb: oppositeMap(instrDataFB),
-  prefix_fc: oppositeMap(instrDataFC),
-  prefix_fd: oppositeMap(instrDataFD),
-  prefix_fe: oppositeMap(instrDataFE),
-  opcodes_ty: oppositeMap(instrDataTy),
-  opcodes_cc: oppositeMap(instrDataCc)
-};
-
-export { opcodeToInstr, instrToOpcode }
+export { seccodes, opcodes, prefix_fb, prefix_fc, prefix_fd, prefix_fe, opcodes_ty, opcodes_cc }
