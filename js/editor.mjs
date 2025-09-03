@@ -4,23 +4,27 @@ import { WasmSim } from "./sim.mjs";
 import { parseCode } from "../src/wasm.mjs";
 
 self.app = new $.Machine({ simEl: $("wasm-sim") });
+let module;
 $.targets({
   app: {
-    updateSim () {
+    async updateSim () {
       const { simEl } = this;
+      // module = parseCode(simEl.editTextElement?.value ?? "");
+      module = await parseCode("XYZ");
       simEl.init(new WasmSim({
-        module: parseCode(""),
+        module,
         async runner () {}
-      }));
-      $.targets({
-        input (e) {
-          const { console, printBuf, code } = simEl.sim;
-          console.clear();
-          console.log("Updated sim:");
-          console.log(printBuf)
-          console.log(simEl.editTextElement.value)
-        }
-      }, simEl)
+      }))
+    },
+    simEl: {
+      input () {
+        const { sim } = this, { printBuf } = sim;
+        sim.console.clear();
+        sim.console.log("Updated sim:");
+        sim.console.log(printBuf)
+        sim.console.log(this.editTextElement.value);
+        console.log(module)
+      }
     }
   }
 });

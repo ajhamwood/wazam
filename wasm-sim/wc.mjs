@@ -24,9 +24,9 @@ $.pipe("wc-loaded", () => $.loadWc("wasm-sim", {
       ".display-buffer": { click () { reprElement.classList.toggle("hide-buffer") } },
       ".run-wasm": { click () { sim.play() } },
       ".reset-wasm": { click () { sim.reset() } },
-      ".editor": { input (event) {
+      ".editor": { input (e) {
         highlightTextElement.innerText = this.value;
-        simEl.dispatchEvent(new Event(event))
+        simEl.dispatchEvent(new Event(e))
       } }
     }, this.shadowRoot)
   },
